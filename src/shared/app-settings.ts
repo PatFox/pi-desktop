@@ -43,5 +43,9 @@ export function normalizeStoredSettings(stored: Record<string, unknown>, languag
   }
   if (!isVoicePrecision(merged.voicePrecision)) merged.voicePrecision = DEFAULT_SETTINGS.voicePrecision
   if (!isVoiceDevice(merged.voiceDevice)) merged.voiceDevice = DEFAULT_SETTINGS.voiceDevice
+  // A hand-edited non-boolean must not read as "off" (or "on") by accident.
+  if (typeof merged.terminalFollowsOmpProfile !== 'boolean') {
+    merged.terminalFollowsOmpProfile = DEFAULT_SETTINGS.terminalFollowsOmpProfile
+  }
   return merged
 }

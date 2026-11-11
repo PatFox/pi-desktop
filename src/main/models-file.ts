@@ -3,6 +3,7 @@ import { existsSync } from 'fs'
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
 import { t } from '../shared/i18n'
 import type { AgentEngineKind, ModelsConfig, ModelsReadFailure } from '../shared/ipc-contracts'
+import { ompAgentDirIn } from './omp-paths'
 
 /**
  * Per-engine custom-models file resolution and (de)serialization.
@@ -30,9 +31,14 @@ export interface ModelsFileLocation {
 export const OMP_MODELS_BASENAMES = ['models.yml', 'models.yaml'] as const
 export const PI_MODELS_BASENAME = 'models.json'
 
-export function resolveModelsFile(engine: AgentEngineKind, homeDir: string): ModelsFileLocation {
+/**
+ * The models file of `engine`. OMP keeps one per profile (`ompProfile`,
+ * undefined for the default profile) in that profile's agent directory; Pi has
+ * no profiles and ignores it.
+ */
+export function resolveModelsFile(engine: AgentEngineKind, homeDir: string, ompProfile?: string): ModelsFileLocation {
   if (engine === 'omp') {
-    const dir = join(homeDir, '.omp', 'agent')
+    const dir = ompAgentDirIn(homeDir, ompProfile)
     const yaml = OMP_MODELS_BASENAMES.find((name) => existsSync(join(dir, name)))
     if (yaml) return { dir, file: join(dir, yaml), name: yaml, format: 'yaml' }
     if (existsSync(join(dir, PI_MODELS_BASENAME))) {

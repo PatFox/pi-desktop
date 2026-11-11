@@ -25,13 +25,21 @@ import {
   Sparkles,
   Stethoscope,
   Pencil,
+  UserRound,
   Workflow as WorkflowIcon,
 } from 'lucide-react'
 import { useMemo, useState, useRef } from 'react'
 import { StatusPopover } from './status-popover'
 import { useContextMenu, buildSessionContextMenu } from './context-menu'
-import { getSessionEngineLabel, getSessionRowLabels, hasMixedSessionEngines } from './sidebar-session-labels'
+import {
+  getSessionEngineLabel,
+  getSessionProfileLabel,
+  getSessionRowLabels,
+  hasMixedOmpProfiles,
+  hasMixedSessionEngines,
+} from './sidebar-session-labels'
 import { ResizeHandle } from './resize-handle'
+import { OmpProfileDialog } from './omp-profile-dialog'
 import { formatRelativeTime } from '../utils/format-relative-time'
 import { SessionRuntimeIndicator } from './session-runtime-indicator'
 import { resolveRunSessionId } from '../utils/workflow-runs'
@@ -230,6 +238,7 @@ export function Sidebar(): React.JSX.Element {
   // Gated on every known session, not on one section's slice, so the same chat
   // carries the same tag in Recent, in a folder group and under Archived.
   const showEngineTags = useMemo(() => hasMixedSessionEngines(sessionList), [sessionList])
+  const showProfileTags = useMemo(() => hasMixedOmpProfiles(sessionList), [sessionList])
 
   const recentSessionsForWorkspace = useMemo(() => {
     if (!activeWorkspace?.path) return []
@@ -304,6 +313,7 @@ export function Sidebar(): React.JSX.Element {
     const isActive = sessionState?.sessionFile === session.path || runtime?.runtimeId === activeSessionRuntimeId
     const nested = options?.nested ?? false
     const engineLabel = showEngineTags ? getSessionEngineLabel(session) : null
+    const profileLabel = showProfileTags ? getSessionProfileLabel(session) : null
 
     // Inline rename for the active row.
     if (isActive && renamingWhere === 'recent') {
@@ -349,9 +359,11 @@ export function Sidebar(): React.JSX.Element {
                 displaced moves here. Recent rows are already grouped by workspace,
                 which makes the project name the less useful of the two subtitles —
                 the home screen, which is not grouped, shows the project instead.
-                The engine leads the line only when both engines are present. */}
+                The engine leads the line only when both engines are present, and
+                the OMP profile (account) only when sessions of several are. */}
             <div className="truncate text-[11px] text-faint">
               {engineLabel && `${engineLabel} · `}
+              {profileLabel && `${profileLabel} · `}
               {formatRelativeTime(session.lastModified, Date.now())}
             </div>
           </div>
@@ -726,6 +738,8 @@ function WorkspaceSwitcher({ onOpenProject }: { onOpenProject: () => void }): Re
   const removeWorkspace = useAppStore((state) => state.removeWorkspace)
   const renameWorkspace = useAppStore((state) => state.renameWorkspace)
   const changeWorkspaceFolder = useAppStore((state) => state.changeWorkspaceFolder)
+  const setWorkspaceOmpProfile = useAppStore((state) => state.setWorkspaceOmpProfile)
+  const piEngine = useAppStore((state) => state.piEngine)
   const pendingPromptCounts = useAppStore((state) => state.pendingPromptCounts)
   const workspaceActivity = useAppStore((state) => state.workspaceActivity)
   const { show: showContextMenu, ContextMenuComponent: WorkspaceContextMenu } = useContextMenu()
@@ -746,6 +760,11 @@ function WorkspaceSwitcher({ onOpenProject }: { onOpenProject: () => void }): Re
   const [isOpen, setIsOpen] = useState(false)
   const [isRenaming, setIsRenaming] = useState(false)
   const [newName, setNewName] = useState('')
+  const [isChoosingOmpProfile, setIsChoosingOmpProfile] = useState(false)
+  // Profiles are an OMP feature: offer the picker where OMP runs, or where a
+  // workspace already has a profile (so it can be cleared again).
+  const offerOmpProfile = Boolean(activeWorkspace && (piEngine === 'omp' || activeWorkspace.ompProfile))
+  const ompEngineLabel = agentEngineLabel('omp')
 
   const handleRename = async () => {
     if (!activeWorkspace || !newName.trim()) return
@@ -785,6 +804,17 @@ function WorkspaceSwitcher({ onOpenProject }: { onOpenProject: () => void }): Re
           void handleChangeFolder()
         },
       },
+      ...(offerOmpProfile
+        ? [{
+            id: 'omp-profile',
+            label: t('sidebar.workspaceMenu.ompProfile', { engine: ompEngineLabel }),
+            icon: <UserRound size={14} />,
+            action: () => {
+              setIsOpen(false)
+              setIsChoosingOmpProfile(true)
+            },
+          }]
+        : []),
     ])
   }
 
@@ -824,7 +854,20 @@ function WorkspaceSwitcher({ onOpenProject }: { onOpenProject: () => void }): Re
           <div className="flex min-w-0 items-center gap-2 text-left">
             <Layers size={14} className="shrink-0" style={{ color: activeWorkspace?.color ?? '#6b7280' }} />
             <div className="min-w-0">
-              <div className="truncate text-sm">{activeWorkspace?.name ?? t('sidebar.workspaceSwitcher.noWorkspace')}</div>
+              <div className="flex min-w-0 items-center gap-1.5">
+                <span className="truncate text-sm">{activeWorkspace?.name ?? t('sidebar.workspaceSwitcher.noWorkspace')}</span>
+                {activeWorkspace?.ompProfile && (
+                  <span
+                    className="shrink-0 rounded bg-accent-bg px-1.5 py-0.5 text-[10px] text-accent-fg"
+                    title={t('sidebar.workspaceSwitcher.ompProfileTitle', {
+                      engine: ompEngineLabel,
+                      profile: activeWorkspace.ompProfile,
+                    })}
+                  >
+                    {activeWorkspace.ompProfile}
+                  </span>
+                )}
+              </div>
               {activeWorkspace && (
                 <div className="truncate text-[10px] text-faint">{activeWorkspace.path}</div>
               )}
@@ -860,6 +903,14 @@ function WorkspaceSwitcher({ onOpenProject }: { onOpenProject: () => void }): Re
         </button>
       )}
       {WorkspaceContextMenu}
+      {isChoosingOmpProfile && activeWorkspace && (
+        <OmpProfileDialog
+          workspaceName={activeWorkspace.name}
+          currentProfile={activeWorkspace.ompProfile}
+          onClose={() => setIsChoosingOmpProfile(false)}
+          onSave={(profile) => setWorkspaceOmpProfile(activeWorkspace.id, profile)}
+        />
+      )}
 
       {/* Dropdown */}
       {isOpen && (

@@ -62,6 +62,7 @@ src/
 │   ├── package-filter.ts         # Tokenized catalog search, shared main+renderer
 │   ├── skill-groups.ts           # Skills panel groups: a display setting keyed by skill name; skill files never move
 │   ├── package-spec.ts           # Validate package specs before the Pi CLI runs
+│   ├── omp-profile.ts            # OMP profile name rule and the leading `--profile` argv
 │   ├── version-compare.ts        # x.y.z-prerelease ordering (app and package update checks)
 │   ├── path-compare.ts           # Platform-aware path equality (win32 case-fold); main+renderer
 │   ├── folder-drop.ts            # Pure helpers for drag-drop folder -> workspace
@@ -99,7 +100,8 @@ src/
 │   ├── diagnostics-report.ts     # Pure report helpers (provider key classification etc.)
 │   ├── pi-rpc-manager.ts         # Agent subprocess management (pi or omp), startup readiness probe, descendant-tree kill
 │   ├── pi-binary-resolution.ts   # Locate and identify installed pi/omp executables
-│   ├── pi-paths.ts               # Per-engine session-store roots; which engine owns a session file
+│   ├── pi-paths.ts               # Session stores (per engine and OMP profile); who owns a session file
+│   ├── omp-paths.ts              # OMP directories per profile (~/.omp, ~/.omp/profiles/<name>); profiles on disk
 │   ├── pi-dotenv.ts              # Read ~/.pi/.env for agent processes, the terminal, and Diagnostics
 │   ├── agent-resources.ts        # Path of a file shipped in resources/ (an agent extension), dev and packaged
 │   ├── latest-project-session.ts # Per-engine session directories of a project; its latest session
@@ -196,6 +198,7 @@ src/
         │   ├── app-shortcuts.ts  # Dispatch configurable shortcuts to app actions
         │   ├── commit-push-shortcut.ts # Review / Commit and push shortcut flow
         │   ├── tab-navigation.ts # Project/session tab order and next/previous tab
+        │   ├── omp-profile-choice.ts # OMP profile picker: listed profiles and the value a selection saves
         │   ├── planning-prompt.ts # Plan/read-only prompt wrapper
         │   ├── compose-prompt.ts # Typed text + staged files -> prompt (text files inlined as data, images as blocks)
         │   ├── ipc-error.ts      # Strip Electron's remote-method prefix from IPC errors
@@ -297,6 +300,7 @@ src/
             ├── repo-bar.tsx       # Linked task repositories under the tab bar; selecting one switches the panels to it
             ├── linked-task-dialog.tsx # Start or edit a linked task across a repo set's repositories
             ├── ship-all-dialog.tsx # Ship all: one commit message and pull request text for every changed repository
+            ├── omp-profile-dialog.tsx # Pick or name the OMP profile a workspace's new sessions run under
             └── workspace-tabs.tsx # Project tabs (drag to reorder) and the project's session tabs
 resources/
 ├── pi-desktop-permissions.ts     # Pi extension that enforces permission modes and rules
@@ -327,13 +331,21 @@ resources/
 - Session names: Pi appends `session_info` records; OMP rewrites a fixed first-line `{"type":"title"}` slot. `session-name.ts`/`session-metadata.ts` read both (session_info outranks the title slot).
 - Skills are listed per engine (`skills-discovery.ts`): Pi scans `~/.pi/agent/skills`, `~/.agents/skills` and project `.pi/skills`/`.agents/skills` recursively; OMP scans `.omp`, `.claude` and `.agents` roots one level deep. Skills only the other engine can load are never shown. When the engine is running, plugin-shipped skills from its command catalog are merged in (`rpc:`-prefixed pseudo-paths render from the description).
 - `~/.pi/.env` (`pi-dotenv.ts`) adds its variables to every Pi or OMP process, the council's Pi run, commit message suggestions, package CLI runs, and the terminal, and Diagnostics uses it for the provider key check. A variable already in the app's environment wins.
+- OMP profiles: OMP's named profiles (`omp --profile <name>`) relocate its whole tree to `~/.omp/profiles/<name>` (logins, sessions, models, MCP servers, skills, plugins), which keeps two accounts apart. A workspace can pin one (`Workspace.ompProfile`; absent is the default profile). `omp-paths.ts` is the one place that maps a profile to its directories, and `shared/omp-profile.ts` holds OMP's name rule (`normalizeOmpProfile`; lower-case, at most 64 characters, no trailing dot, no Windows device names).
+  - Session stores: `getSessionStores()` in `pi-paths.ts` lists Pi's store, OMP's default store, and each named profile's store found on disk; every session row carries its owner (`SessionListItem.ompProfile`). `sessionOwnerForBoundSession` extends the engine rule: opening, forking, or resuming a session starts its owner's engine and profile, and a new session runs under the workspace's profile (`bindStartToSessionOwner` in `workspace-manager.ts`, also used by the legacy per-workspace manager starts). Profile stores come only from valid directory names on disk, never from a name the renderer sent, so `isWithinSessionRoots` stays a gate.
+  - Every OMP invocation leads with an explicit `--profile <name|default>` (`ompProfileArgs`): RPC starts, `runPiCli` package commands, commit message suggestions and the council consultant. An explicit `default` outranks an `OMP_PROFILE` the app inherited. Pi never gets the flag.
+  - The OMP panels (models, MCP servers, skills, plugins) read the active profile (`activeOmpProfile` in `ipc/active-engine.ts`: the active session's when it runs OMP, else the active workspace's). The models editor echoes the profile it read on save, like the engine.
+  - Changing a workspace's profile moves new sessions only; an open conversation keeps the account that wrote it. The empty chat of a new session restarts at once under the new profile.
+  - With `terminalFollowsOmpProfile` on (the default), a workspace's terminal starts with `OMP_PROFILE` set to its profile (`default` for the default profile), so `omp login` typed there signs in to that account. Off leaves the inherited environment alone.
+  - Not covered: OMP's `PI_CONFIG_DIR` and XDG layouts, which move `~/.omp`; the app keeps reading `~/.omp`.
 
 ### Workspace management
 
 - Multiple workspaces (project directories). No workspace is created automatically: a fresh install opens to Home, and opening a folder or resuming a session creates and activates one
 - Each workspace owns a file service; every live session in that project owns an independent Pi process bound to the workspace cwd and its own `--session` file
 - Session navigation is immediate; Pi startup and history loading continue in the background
-- Workspace switcher in the sidebar
+- Workspace switcher in the sidebar; its context menu offers the workspace's OMP profile (shown where OMP runs or a profile is already set), and the header shows a named profile as a pill
+- Worktree tabs inherit their source workspace's OMP profile; linked-task tabs start on the default profile
 - Project tabs keep creation order until the user drags one to a new place; the custom order is saved (`utils/tab-navigation.ts`), and the project-tab shortcuts follow it
 - Switching to a session from a different project creates that project's workspace if needed
 - **Drag and drop a folder** onto the window to open it as a project (create the workspace if needed, switch, show Chat); this is the same path as File > Open Project
@@ -481,7 +493,7 @@ Click the status icon in the sidebar header to see:
 
 ### Settings
 
-- Agent Configuration: engine (auto-detect / Pi / OMP) and executable path
+- Agent Configuration: engine (auto-detect / Pi / OMP) and executable path; whether a workspace's terminal uses the workspace's OMP profile (`terminalFollowsOmpProfile`, default on)
 - Theme: Dark, Light, System, Nord, Gruvbox, Breeze Dark, Breeze Light, Breeze Claudius (Breeze Dark base with a deep chat surface, contributed by @sumit-m). It applies immediately. **The default is `system`**, which maps light mode to `light` and dark mode to `dark`; Breeze Claudius is opt-in only
 - UI font (a font list; empty uses the bundled defaults) and independent UI / Terminal / Code Editor font size sliders
 - Chat width: Normal (readable middle column) or Full width (messages and composer fill the chat area)
@@ -494,7 +506,7 @@ Click the status icon in the sidebar header to see:
 - Every field live-previews before Save through a unified settings draft (`store.ts` `settingsDraft`); the draft survives view switches; Save persists it, and Reset restores `DEFAULT_SETTINGS`
 - Permission rules: user-defined allow/deny rules (a glob per Pi tool) on top of the permission modes. Deny beats allow, and allow beats the mode default; deny applies in every mode. Global rules live in `<GUI data dir>/permission-rules.json`. A workspace `.pi-desktop/permission-rules.json` depends on workspace trust: when the workspace is trusted, it replaces the global rules; when it is untrusted (the default), only its deny rules apply, on top of the global rules, and its allow rules are ignored (a repo can tighten, never grant). Opening a workspace whose rules file has allow rules shows a trust prompt; the editor's Global tab notes the override, and the This workspace tab has a Trust/Revoke control. Settings > Behavior edits BOTH scopes through Global | This workspace tabs: create, edit, and remove workspace rules (in-app danger confirmation), Copy from global (seeds an unsaved draft from the current global list), and per-scope JSON import/export. Hand edits to either file on disk are supported: switching scope tabs re-reads that file when the scope has no unsaved draft. Engine: `resources/permission-rules.ts`, shared by the Pi extension (jiti relative import, mtime-cached live re-read) and the main process. The permissions extension always loads alongside Pi when it is present on disk, whatever the mode and whether or not rules exist, so a rules file created mid-session is enforced at once.
   - Trust posture: a workspace's `.pi-desktop/permission-rules.json` is repo content, so its allow rules take effect only after the user explicitly trusts the workspace (saved in `trusted-workspaces.json`; shown as a trust prompt on open and a control in Settings). Until then, the repo can only add deny rules; it cannot suppress ask-mode prompts. Rule globs match raw tool input strings only (no path canonicalization, no command parsing), so rules guard against accidents and are not a security sandbox.
-- Custom models and providers editor: edits the active engine's models file, `~/.pi/agent/models.json` (Pi) or `~/.omp/agent/models.yml` (OMP; a not-yet-migrated `models.json` is kept until OMP migrates it). Main reports the resolved file, so the editor labels always match. Save writes the file the editor read, and the editor reloads when the engine in use changes while it has no unsaved edits; changes apply on engine restart
+- Custom models and providers editor: edits the active engine's models file, `~/.pi/agent/models.json` (Pi) or the active OMP profile's `agent/models.yml` (OMP; a not-yet-migrated `models.json` is kept until OMP migrates it). Main reports the resolved file, so the editor labels always match. Save writes the file the editor read, and the editor reloads when the engine in use changes while it has no unsaved edits; changes apply on engine restart
 - All settings are saved to `<GUI data dir>/settings.json`; defaults come from the single shared `src/shared/default-settings.ts` (used to seed the file AND for the renderer's initial/Reset values)
 - Language (`language`, default `system`; resolved by `src/shared/i18n/resolve.ts` against `app.getPreferredSystemLanguages()`; applies on Save; `PI_DESKTOP_PSEUDO_LANGUAGE=1` offers the `en-XA` test language)
 
@@ -506,6 +518,7 @@ Right-click for:
 - Code blocks: Copy Code Block, Search Selection
 - Links: Open Link, Copy Link
 - Session rows: Open Session, Workflow Runs, Archive/Unarchive, Rename…, Delete…
+- Workspace switcher: Rename, Change folder…, OMP profile…
 - Terminal: Copy, Paste, Select All, Clear
 
 ## IPC architecture
@@ -526,7 +539,7 @@ The GUI data dir is `<appData>/pi-desktop` (on Linux, `~/.config/pi-desktop`). `
 
 | Path | Purpose |
 |------|---------|
-| `<GUI data dir>/workspaces.json` | Workspace list and active workspace |
+| `<GUI data dir>/workspaces.json` | Workspace list and active workspace (including each workspace's OMP profile) |
 | `<GUI data dir>/settings.json` | App settings |
 | `<GUI data dir>/session-tags.json` | Session tags |
 | `<GUI data dir>/trusted-workspaces.json` | Workspaces the user has trusted (enables their allow rules + interactive HTML preview) |
@@ -544,6 +557,7 @@ The GUI data dir is `<appData>/pi-desktop` (on Linux, `~/.config/pi-desktop`). `
 | `<workspace>/.pi-desktop/permission-rules.json` | Workspace permission rules |
 | `~/.pi/agent/sessions/` | Pi session files (organized by cwd) |
 | `~/.omp/agent/sessions/` | OMP session files (same layout; OMP writes here regardless of flags) |
+| `~/.omp/profiles/<name>/` | A named OMP profile: the same tree as `~/.omp` (`agent/sessions/`, `agent/models.yml`, `agent/mcp.json`, `agent/skills/`, `plugins/`) for one account |
 | `~/.pi/agent/settings.json` | Pi global settings (installed `packages[]`) |
 | `.pi/settings.json` | Pi project settings |
 | `~/.pi/agent/models.json` | Pi custom models/providers |

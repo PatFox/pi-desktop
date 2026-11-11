@@ -18,6 +18,7 @@ import { describePiStartFailure, isCmdShim } from './pi-binary-resolution'
 import { buildPiInvocation, buildPiRunEnv, getPiCli, type PiCli } from './pi-rpc-manager'
 import { childProcessEnv } from './windows-exe-search'
 import { t } from '../shared/i18n'
+import { ompProfileArgs } from '../shared/omp-profile'
 
 const IS_WINDOWS = process.platform === 'win32'
 const MS_PER_SECOND = 1000
@@ -170,13 +171,15 @@ export function buildConsultantLaunch(
   install: ConsultantInstall,
   isWindows: boolean,
   inheritedEnv: NodeJS.ProcessEnv,
+  ompProfile?: string,
 ): ConsultantLaunch | { error: string } {
   if (install.id === 'pi') {
     const { cli } = install
     if (cli.failureReason) return { error: describePiStartFailure(cli.failureReason, t) }
     const { args } = buildConsultantCommand(install.id, cli.script, cli.kind ?? 'pi')
     return {
-      ...buildPiInvocation(cli, args),
+      // Under OMP the consultant plans with the active workspace's account.
+      ...buildPiInvocation(cli, [...ompProfileArgs(cli.kind, ompProfile), ...args]),
       shell: cli.needsShell,
       // Only the Pi consultant is an agent engine run; ~/.pi/.env is not for other CLIs.
       env: buildPiRunEnv(cli.needsShell, inheritedEnv),
@@ -200,10 +203,13 @@ function installedConsultant(id: CouncilAgentId): ConsultantInstall {
   return { id, executable: detectAgents().find((agent) => agent.id === id)?.path ?? null }
 }
 
-/** Default spawn: run the consultant CLI, stream output, enforce timeout. */
-export const defaultSpawnConsultant: SpawnConsultant = (id, prompt, cwd, timeoutMs, onChunk) =>
-  new Promise<SpawnOutcome>((resolve) => {
-    const launch = buildConsultantLaunch(installedConsultant(id), IS_WINDOWS, process.env)
+/**
+ * Spawn: run the consultant CLI, stream output, enforce timeout. An OMP
+ * consultant runs under `ompProfile` (undefined is the default profile).
+ */
+export const consultantSpawner = (ompProfile: string | undefined): SpawnConsultant =>
+  (id, prompt, cwd, timeoutMs, onChunk) => new Promise<SpawnOutcome>((resolve) => {
+    const launch = buildConsultantLaunch(installedConsultant(id), IS_WINDOWS, process.env, ompProfile)
     if ('error' in launch) {
       resolve({ ok: false, output: '', error: launch.error })
       return
@@ -299,3 +305,6 @@ export const defaultSpawnConsultant: SpawnConsultant = (id, prompt, cwd, timeout
       }
     })
   })
+
+/** Spawn with the default OMP profile. */
+export const defaultSpawnConsultant: SpawnConsultant = consultantSpawner(undefined)

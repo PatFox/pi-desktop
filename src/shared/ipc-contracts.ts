@@ -17,6 +17,7 @@ export const IPC_CHANNELS = {
   PI_RESTART: 'pi:restart',
   PI_STATUS: 'pi:status',
   PI_DETECT_INSTALLATIONS: 'pi:detect-installations',
+  OMP_LIST_PROFILES: 'omp:list-profiles',
 
   // Pi commands
   PI_PROMPT: 'pi:prompt',
@@ -114,6 +115,7 @@ export const IPC_CHANNELS = {
   WORKSPACE_SET_ACTIVE: 'workspace:set-active',
   WORKSPACE_GET_ACTIVE: 'workspace:get-active',
   WORKSPACE_CHANGE_PATH: 'workspace:change-path',
+  WORKSPACE_SET_OMP_PROFILE: 'workspace:set-omp-profile',
   WORKSPACE_PATH_EXISTS: 'workspace:path-exists',
   WORKSPACE_START_PI: 'workspace:start-pi',
   WORKSPACE_STOP_PI: 'workspace:stop-pi',
@@ -427,6 +429,13 @@ export interface PiStartOptions {
    * engine", which is what a brand-new session does.
    */
   engine?: AgentEngineKind
+  /**
+   * OMP profile this one start must run under (undefined is the default
+   * profile). Like the engine, a resumed or forked session keeps the profile
+   * whose store holds it; a new session takes the workspace's profile. Ignored
+   * when the start spawns Pi.
+   */
+  ompProfile?: string
   args?: string[]
   env?: Record<string, string>
 }
@@ -983,6 +992,8 @@ export interface SessionListItem {
    * listable; consumers show no engine tag rather than guessing one.
    */
   engine?: AgentEngineKind
+  /** Named OMP profile whose store holds this session; absent for the default profile and for Pi. */
+  ompProfile?: string
   lastModified: number
   messageCount: number
   projectPath: string
@@ -1154,6 +1165,8 @@ import type { ChatWidth } from './chat-width'
  */
 export interface ModelsFileInfo {
   engine: AgentEngineKind
+  /** OMP profile whose file this is; absent for the default profile and for Pi. */
+  ompProfile?: string
   /** Absolute path of the file read (and written on save). */
   file: string
   /** Basename, for labels ("Save models.yml"). */
@@ -1326,6 +1339,9 @@ export interface AppSettings {
   uiFontFamily: string
   // Terminal (xterm) font size in px — independent of the UI font size.
   terminalFontSize: number
+  // A workspace's integrated terminal runs with the workspace's OMP profile
+  // (OMP_PROFILE), so `omp` typed there uses the same account as its sessions.
+  terminalFollowsOmpProfile: boolean
   // Code editor (CodeMirror) font size in px — independent of the UI font size.
   codeEditorFontSize: number
   // Chat column width: 'normal' keeps a readable column, 'full' uses the whole
@@ -1514,6 +1530,17 @@ export interface Workspace {
   taskPrompt?: string
   /** The repositories of a `repoSet` tab; `path` is its main repository's checkout. */
   linkedTask?: LinkedTask
+  /**
+   * Named OMP profile new sessions in this workspace run under; absent means
+   * the default profile. Validated with `normalizeOmpProfile`.
+   */
+  ompProfile?: string
+}
+
+/** Result of changing a workspace's OMP profile. */
+export interface WorkspaceOmpProfileResult {
+  /** True when the workspace has running sessions that must restart to apply it. */
+  runtimesRunning: boolean
 }
 
 // ─── Repo Set Types ─────────────────────────────────────────────────────────

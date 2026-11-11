@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
-import { getSessionEngineLabel, getSessionRowLabels, hasMixedSessionEngines } from './sidebar-session-labels'
+import { test } from 'node:test'
+import { getSessionEngineLabel, getSessionProfileLabel, getSessionRowLabels, hasMixedOmpProfiles, hasMixedSessionEngines } from './sidebar-session-labels'
 
 const namelessCurrentWorkspace = {
   name: null,
@@ -71,3 +72,17 @@ assert.equal(hasMixedSessionEngines([{}, {}]), false)
 // Two real engines on screen: the tag is now the only way to tell rows apart.
 assert.equal(hasMixedSessionEngines([{ engine: 'pi' }, {}, { engine: 'omp' }]), true)
 assert.equal(hasMixedSessionEngines([{ engine: 'omp' }, { engine: 'pi' }]), true)
+
+test('an OMP session is tagged with its profile, the default one by name', () => {
+  assert.equal(getSessionProfileLabel({ engine: 'omp', ompProfile: 'work' }), 'work')
+  assert.equal(getSessionProfileLabel({ engine: 'omp' }), 'default')
+  assert.equal(getSessionProfileLabel({ engine: 'pi' }), null)
+  assert.equal(getSessionProfileLabel({}), null)
+})
+
+test('profile tags show only when OMP sessions come from more than one profile', () => {
+  assert.equal(hasMixedOmpProfiles([{ engine: 'omp' }, { engine: 'omp' }, { engine: 'pi' }]), false)
+  assert.equal(hasMixedOmpProfiles([{ engine: 'omp', ompProfile: 'work' }, { engine: 'omp', ompProfile: 'work' }]), false)
+  assert.equal(hasMixedOmpProfiles([{ engine: 'omp' }, { engine: 'omp', ompProfile: 'work' }]), true)
+  assert.equal(hasMixedOmpProfiles([]), false)
+})

@@ -21,7 +21,8 @@ const OMP_PROVIDERS: ModelsConfig = { providers: { 'omp-only': { baseUrl: 'http:
  */
 async function withModelsHandlers(
   engineInUse: AgentEngineKind,
-  fn: (paths: { piFile: string; ompFile: string; home: string }) => Promise<void>
+  fn: (paths: { piFile: string; ompFile: string; home: string }) => Promise<void>,
+  ompProfileInUse?: string
 ): Promise<void> {
   const require = createRequire(import.meta.url)
   const electronPath = require.resolve('electron')
@@ -38,7 +39,13 @@ async function withModelsHandlers(
   try {
     const { registerModelsConfigHandlers } = await import('./models-config-handlers')
     registerModelsConfigHandlers({
-      workspaceManager: { getActivePiManager: () => ({ getEngineKind: () => engineInUse }) },
+      workspaceManager: {
+        getActivePiManager: () => ({
+          getEngineKind: () => engineInUse,
+          getOmpProfile: () => (engineInUse === 'omp' ? { profile: ompProfileInUse } : null),
+        }),
+        getActiveWorkspace: () => null,
+      },
     } as unknown as IpcContext)
     await fn({
       home,
@@ -53,8 +60,8 @@ async function withModelsHandlers(
   }
 }
 
-async function write(config: unknown, engine: unknown): Promise<unknown> {
-  return handlers.get(IPC_CHANNELS.MODELS_WRITE)!(null, config, engine)
+async function write(config: unknown, engine: unknown, ompProfile?: unknown): Promise<unknown> {
+  return handlers.get(IPC_CHANNELS.MODELS_WRITE)!(null, config, engine, ompProfile)
 }
 
 // The editor loaded one engine's file, then the engine in use changed under it.
@@ -93,4 +100,29 @@ test('a save that names no known engine is refused and writes nothing', async ()
     assert.equal(existsSync(join(home, '.pi')), false)
     assert.equal(existsSync(join(home, '.omp')), false)
   })
+})
+
+// Each OMP profile keeps its own models file; the editor names the profile it read.
+test('an OMP save writes the models file of the profile the editor loaded', async () => {
+  await withModelsHandlers('omp', async ({ home, ompFile }) => {
+    assert.deepEqual(await write(OMP_PROVIDERS, 'omp', 'work'), { success: true })
+    const workFile = join(home, '.omp', 'profiles', 'work', 'agent', 'models.yml')
+    assert.equal(existsSync(workFile), true)
+    assert.equal(existsSync(ompFile), false, "the default profile's file is untouched")
+  })
+})
+
+test('a save naming an invalid profile is refused', async () => {
+  await withModelsHandlers('omp', async ({ home }) => {
+    assert.deepEqual(await write(OMP_PROVIDERS, 'omp', '../escape'), { success: false, error: 'Invalid models profile' })
+    assert.equal(existsSync(join(home, '.omp', 'profiles')), false)
+  })
+})
+
+test('a read shows the models file of the active OMP profile', async () => {
+  await withModelsHandlers('omp', async ({ home }) => {
+    const result = await handlers.get(IPC_CHANNELS.MODELS_READ)!(null) as { location: { file: string; ompProfile?: string } }
+    assert.equal(result.location.file, join(home, '.omp', 'profiles', 'work', 'agent', 'models.yml'))
+    assert.equal(result.location.ompProfile, 'work')
+  }, 'work')
 })

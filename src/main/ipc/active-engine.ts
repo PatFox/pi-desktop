@@ -13,3 +13,16 @@ import type { WorkspaceManager } from '../workspace-manager'
 export function activeEngineKind(workspaceManager: WorkspaceManager): AgentEngineKind {
   return workspaceManager.getActivePiManager()?.getEngineKind() ?? getConfiguredEngineKind()
 }
+
+/**
+ * OMP profile the user is looking at right now (undefined is the default
+ * profile): the active session's when it runs OMP — a session opened from
+ * another profile's store keeps that profile — else the active workspace's,
+ * which is what the next start would use. The OMP config panels (models, MCP
+ * servers, skills, plugins) read this, the same way they read the engine.
+ */
+export function activeOmpProfile(workspaceManager: WorkspaceManager): string | undefined {
+  const running = workspaceManager.getActivePiManager()?.getOmpProfile()
+  if (running) return running.profile
+  return workspaceManager.getActiveWorkspace()?.ompProfile
+}

@@ -9,7 +9,8 @@ import { IPC_CHANNELS } from '../../shared/ipc-contracts'
 import { COUNCIL_AGENT_IDS, clampTimeoutSeconds } from '../../shared/council-config'
 import type { CouncilAgentId, ConsensusMode, ConsultantResult } from '../../shared/council-config'
 import { detectAgents } from '../agent-detection'
-import { runConsultants, runArbiter, defaultSpawnConsultant, type ArbiterRequest } from '../council-manager'
+import { runConsultants, runArbiter, consultantSpawner, type ArbiterRequest } from '../council-manager'
+import { activeOmpProfile } from './active-engine'
 import { access } from 'fs/promises'
 import { isString, isObject } from './validation'
 import type { IpcContext } from './context'
@@ -68,7 +69,7 @@ export function registerCouncilHandlers(ctx: IpcContext): void {
       const results = await runConsultants(
         { request: payload.request, members, cwd, timeoutSeconds, consensusMode },
         {
-          spawnConsultant: defaultSpawnConsultant,
+          spawnConsultant: consultantSpawner(activeOmpProfile(workspaceManager)),
           onProgress: (id, chunk) => broadcast(IPC_CHANNELS.EVENT_COUNCIL_PROGRESS, { id, chunk }),
         },
       )
@@ -114,7 +115,7 @@ export function registerCouncilHandlers(ctx: IpcContext): void {
 
       const cwd = await resolveCouncilCwd(workspaceManager)
       const outcome = await runArbiter(input, cwd, timeoutSeconds, {
-        spawnConsultant: defaultSpawnConsultant,
+        spawnConsultant: consultantSpawner(activeOmpProfile(workspaceManager)),
         onProgress: (chunk) => broadcast(IPC_CHANNELS.EVENT_COUNCIL_PROGRESS, { id: 'pi', chunk }),
       })
       if (!outcome.ok) {

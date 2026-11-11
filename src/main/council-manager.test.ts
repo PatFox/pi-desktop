@@ -111,7 +111,17 @@ test('a Pi shim path is escaped for the cmd.exe hop and keeps the switch', () =>
 test('an OMP engine plans with its native read-only tool allowlist', () => {
   const cli = piCli({ kind: 'omp', script: String.raw`C:\Users\u\.bun\bin\omp.exe` })
   const launch = launched(buildConsultantLaunch({ id: 'pi', cli }, true, windowsAppEnv()))
-  assert.deepEqual(command(launch), { file: cli.script, args: OMP_ARGS, shell: false })
+  // The default profile is named explicitly, so an inherited OMP_PROFILE cannot move it.
+  assert.deepEqual(command(launch), { file: cli.script, args: ['--profile', 'default', ...OMP_ARGS], shell: false })
+})
+
+test('an OMP consultant plans under the active workspace profile; Pi has none', () => {
+  const omp = piCli({ kind: 'omp', script: String.raw`C:\Users\u\.bun\bin\omp.exe` })
+  const ompLaunch = launched(buildConsultantLaunch({ id: 'pi', cli: omp }, true, windowsAppEnv(), 'work'))
+  assert.deepEqual(command(ompLaunch).args.slice(0, 2), ['--profile', 'work'])
+  const pi = piCli({ script: String.raw`C:\Users\u\AppData\Roaming\npm\pi.cmd`, needsShell: true })
+  const piLaunch = launched(buildConsultantLaunch({ id: 'pi', cli: pi }, true, windowsAppEnv(), 'work'))
+  assert.equal(command(piLaunch).args.includes('--profile'), false)
 })
 
 test('a consultant that was not found is reported, never spawned by bare name', () => {

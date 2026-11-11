@@ -18,6 +18,7 @@ import {
   type PiStartOptions,
   type RepoSet,
   type Workspace,
+  type WorkspaceOmpProfileResult,
   type WorkspaceRemoveResult,
   type WorkspaceTabOptions,
   type SessionRuntimeInfo,
@@ -25,7 +26,7 @@ import {
   type SessionRuntimeCloseResult,
 } from '../shared/ipc-contracts'
 import { getGuiDataPath } from './app-data-paths'
-import { engineForBoundSession, isWithinSessionRoots } from './pi-paths'
+import { isWithinSessionRoots, sessionOwnerForBoundSession } from './pi-paths'
 import { pathsEqual, pathGroupKey } from './session-paths'
 import { isPathWithin, resolveRealPath } from '../../resources/path-within'
 import { appLog } from './app-log'
@@ -51,6 +52,7 @@ import { inspectRepoFolder } from './repo-sets'
 import { checkoutForLinkedTask, checkoutLinkedTask, removeLinkedTaskCheckouts } from './linked-worktrees'
 import { readLinkedRepoStatuses } from './linked-task-status'
 import { uniqueRepoName } from '../shared/repo-set-draft'
+import { isValidOmpProfileName, normalizeOmpProfile } from '../shared/omp-profile'
 
 /**
  * Manages project workspaces and their independent Pi session runtimes.
@@ -154,6 +156,45 @@ export function isDisposableSessionFile(
     isWithinSessionRoots(result.sessionPath) &&
     existsSync(result.sessionPath)
   )
+}
+
+/**
+ * Bind one start to whoever owns the session it opens. The stores are
+ * separate per engine and per OMP profile, so only the owner can resume a
+ * session: its engine (unless the caller named one) and its OMP profile. A
+ * start that opens no existing file is a new session and runs under the
+ * workspace's profile. An `ompProfile` key the caller set explicitly wins.
+ *
+ * Every runtime start goes through this, including the legacy per-workspace
+ * manager fallbacks, so no path spawns OMP under the wrong account.
+ */
+export function bindStartToSessionOwner(
+  startOptions: PiStartOptions,
+  workspace: Pick<Workspace, 'ompProfile'>
+): void {
+  const owner = sessionOwnerForBoundSession(startOptions)
+  if (!startOptions.engine && owner) startOptions.engine = owner.engine
+  if ('ompProfile' in startOptions) return
+  const ompProfile = owner ? owner.ompProfile : workspace.ompProfile
+  if (ompProfile) startOptions.ompProfile = ompProfile
+}
+
+/**
+ * A stored workspace with its OMP profile checked. A hand-edited or foreign
+ * workspaces.json must never hand OMP a profile name it would refuse (or a
+ * path segment), so an invalid one is dropped and the workspace falls back to
+ * the default profile; `default` is stored as no profile.
+ */
+function withValidOmpProfile(workspace: Workspace): Workspace {
+  if (workspace.ompProfile === undefined) return workspace
+  const profile = normalizeOmpProfile(workspace.ompProfile)
+  if (profile === workspace.ompProfile) return workspace
+  const { ompProfile: _stored, ...rest } = workspace
+  if (profile === null) {
+    appLog.warn('workspaces', `Ignored an invalid OMP profile for workspace ${workspace.id}`)
+    return rest
+  }
+  return profile ? { ...rest, ompProfile: profile } : rest
 }
 
 export class WorkspaceManager {
@@ -639,11 +680,7 @@ export class WorkspaceManager {
       ...options,
       ...(ownPath !== null && !ownFileWritten ? { continueSession: false } : {}),
     }
-    // Start the engine that owns the session file rather than the configured
-    // default: the stores are separate, so only the engine that wrote a session
-    // can resume it. An engine the caller named explicitly still wins.
-    const ownerEngine = engineForBoundSession(startOptions)
-    if (!startOptions.engine && ownerEngine) startOptions.engine = ownerEngine
+    bindStartToSessionOwner(startOptions, workspace)
     // Every start path converges here, so a linked task always hands the
     // agent its repositories, whichever engine runs it.
     if (workspace.linkedTask) {
@@ -1042,6 +1079,29 @@ export class WorkspaceManager {
   }
 
   /**
+   * Set the OMP profile new sessions in this workspace run under (undefined is
+   * the default profile). A running session keeps its account until it
+   * restarts — and a session bound to a file keeps the profile that wrote it
+   * even then (bindStartToSessionOwner) — so the result reports whether the
+   * workspace has live sessions the renderer may offer to restart.
+   */
+  async setWorkspaceOmpProfile(workspaceId: string, ompProfile: string | undefined): Promise<WorkspaceOmpProfileResult> {
+    const workspace = this.workspaces.find((w) => w.id === workspaceId)
+    if (!workspace) throw new Error(t('errors.workspace.notFound', { workspaceId }))
+    if (ompProfile !== undefined && !isValidOmpProfileName(ompProfile)) {
+      throw new Error(t('errors.workspace.invalidOmpProfile', { profile: ompProfile }))
+    }
+
+    if (ompProfile) workspace.ompProfile = ompProfile
+    else delete workspace.ompProfile
+    await this.saveWorkspaces()
+    const runtimesRunning = [...this.sessionRuntimes.values()].some(
+      (entry) => entry.info.workspaceId === workspaceId && this.isRuntimeLive(entry)
+    )
+    return { runtimesRunning }
+  }
+
+  /**
    * Repoint a workspace at a different folder. Replaces its FileService (which
    * binds the path at construction), stops the workspace's Pi (its cwd is
    * bound at spawn), and re-arms watching if it's the active one. The renderer
@@ -1250,6 +1310,8 @@ export class WorkspaceManager {
       sourceWasDirty,
       managed: true,
       ...(taskPrompt ? { taskPrompt } : {}),
+      // A tab of a project works under the same account as the project.
+      ...(source.ompProfile ? { ompProfile: source.ompProfile } : {}),
     }
     this.nextColorIndex++
     this.workspaces.push(workspace)
@@ -1465,7 +1527,7 @@ export class WorkspaceManager {
       return
     }
 
-    this.workspaces = (state.workspaces ?? []).map((workspace) => ({
+    this.workspaces = (state.workspaces ?? []).map((workspace) => withValidOmpProfile({
       ...workspace,
       kind: workspace.kind ?? 'folder',
     }))

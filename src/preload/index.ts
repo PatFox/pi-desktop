@@ -12,6 +12,7 @@ import type {
   AgentInstallationsResult,
   Workspace,
   WorkspaceTabOptions,
+  WorkspaceOmpProfileResult,
   WorkspaceRemoveResult,
   InstalledPackage,
   InstalledSkill,
@@ -104,6 +105,8 @@ interface PiDesktopAPI {
     restart(options?: PiStartOptions): Promise<PiStatus>
     getStatus(): Promise<PiStatus>
     detectInstallations(options?: AgentDetectionOptions): Promise<AgentInstallationsResult>
+    /** Named OMP profiles that exist on disk (the default profile is implied). */
+    listOmpProfiles(): Promise<string[]>
   }
 
   // Pi commands
@@ -201,6 +204,8 @@ interface PiDesktopAPI {
     createTab(options?: WorkspaceTabOptions): Promise<Workspace>
     remove(workspaceId: string): Promise<WorkspaceRemoveResult>
     rename(workspaceId: string, name: string): Promise<void>
+    /** Set the OMP profile new sessions run under; undefined is the default profile. */
+    setOmpProfile(workspaceId: string, ompProfile: string | undefined): Promise<WorkspaceOmpProfileResult>
     changePath(workspaceId: string, newPath: string): Promise<void>
     pathExists(): Promise<boolean>
     setActive(workspaceId: string): Promise<Workspace>
@@ -249,8 +254,11 @@ interface PiDesktopAPI {
   // Custom models config: the active engine's models file
   models: {
     read(): Promise<ModelsReadResult>
-    /** Writes the models file of `engine`: the one the editor read, whatever runs now. */
-    write(config: ModelsConfig, engine: AgentEngineKind): Promise<{ success: boolean; error?: string }>
+    /**
+     * Writes the models file of `engine` and OMP `ompProfile`: the one the
+     * editor read, whatever runs now.
+     */
+    write(config: ModelsConfig, engine: AgentEngineKind, ompProfile?: string): Promise<{ success: boolean; error?: string }>
   }
 
   council: {
@@ -450,6 +458,7 @@ const api: PiDesktopAPI = {
     restart: (options?: PiStartOptions) => ipcRenderer.invoke(IPC_CHANNELS.PI_RESTART, options),
     getStatus: () => ipcRenderer.invoke(IPC_CHANNELS.PI_STATUS),
     detectInstallations: (options) => ipcRenderer.invoke(IPC_CHANNELS.PI_DETECT_INSTALLATIONS, options),
+    listOmpProfiles: () => ipcRenderer.invoke(IPC_CHANNELS.OMP_LIST_PROFILES),
   },
 
   commands: {
@@ -534,6 +543,8 @@ const api: PiDesktopAPI = {
     create: (name, path) => ipcRenderer.invoke(IPC_CHANNELS.WORKSPACE_CREATE, name, path),
     remove: (workspaceId) => ipcRenderer.invoke(IPC_CHANNELS.WORKSPACE_REMOVE, workspaceId),
     rename: (workspaceId, name) => ipcRenderer.invoke(IPC_CHANNELS.WORKSPACE_RENAME, workspaceId, name),
+    setOmpProfile: (workspaceId, ompProfile) =>
+      ipcRenderer.invoke(IPC_CHANNELS.WORKSPACE_SET_OMP_PROFILE, workspaceId, ompProfile),
     changePath: (workspaceId, newPath) => ipcRenderer.invoke(IPC_CHANNELS.WORKSPACE_CHANGE_PATH, workspaceId, newPath),
     pathExists: () => ipcRenderer.invoke(IPC_CHANNELS.WORKSPACE_PATH_EXISTS),
     setActive: (workspaceId) => ipcRenderer.invoke(IPC_CHANNELS.WORKSPACE_SET_ACTIVE, workspaceId),
@@ -572,7 +583,7 @@ const api: PiDesktopAPI = {
 
   models: {
     read: () => ipcRenderer.invoke(IPC_CHANNELS.MODELS_READ),
-    write: (config, engine) => ipcRenderer.invoke(IPC_CHANNELS.MODELS_WRITE, config, engine),
+    write: (config, engine, ompProfile) => ipcRenderer.invoke(IPC_CHANNELS.MODELS_WRITE, config, engine, ompProfile),
   },
 
   council: {

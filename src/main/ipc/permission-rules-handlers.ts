@@ -1,5 +1,5 @@
 import { ipcMain, dialog } from 'electron'
-import { WorkspaceManager } from '../workspace-manager'
+import { bindStartToSessionOwner, WorkspaceManager } from '../workspace-manager'
 import type {
   PermissionRulesScope,
   PermissionRulesGetResult,
@@ -198,9 +198,12 @@ export function registerPermissionRulesHandlers(ctx: IpcContext): void {
           const pi = workspaceManager.getPiManager(activeWs.id)
           if (pi && pi.getStatus().status === 'running') {
             pi.stop()
-            await pi.start(
-              applyPermissionModeToStartOptions(applyResumePreference({ cwd: activeWs.path }, fresh), fresh)
+            const startOptions = applyPermissionModeToStartOptions(
+              applyResumePreference({ cwd: activeWs.path }, fresh),
+              fresh
             )
+            bindStartToSessionOwner(startOptions, activeWs)
+            await pi.start(startOptions)
           }
         }
       }

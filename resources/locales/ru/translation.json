@@ -751,6 +751,7 @@
     },
     "workspace": {
       "folderMissing": "Папка не существует: {{path}}",
+      "invalidOmpProfile": "",
       "managedWorktreeCannotChangeFolder": "Нельзя сменить папку вкладки управляемого рабочего дерева. Закройте вкладку и создайте новую",
       "noneActive": "Нет активного проекта",
       "noSourceForNewTab": "Нет исходного проекта для новой вкладки",
@@ -973,6 +974,20 @@
     "failed": "Pi остановился с ошибкой.",
     "needs-approval": "Pi ждёт вашего одобрения.",
     "withSession": "{{body}} Нажмите, чтобы открыть завершённую сессию."
+  },
+  "ompProfile": {
+    "dialog": {
+      "defaultOption": "",
+      "intro": "",
+      "invalidName": "",
+      "loadFailed": "",
+      "loginHint": "",
+      "newNameLabel": "",
+      "newNamePlaceholder": "",
+      "newOption": "",
+      "profileLabel": "",
+      "title": ""
+    }
   },
   "packages": {
     "catalog": {
@@ -1247,6 +1262,7 @@
       "sessionCount_many": "{{count}} сессий",
       "sessionCount_other": "{{count}} сессии"
     },
+    "ompProfileSession": "",
     "runtime": {
       "completed": "{{agent}} завершил работу",
       "failed": "{{agent}} остановился с ошибкой",
@@ -1456,6 +1472,10 @@
       "description": "В конце хода {{agent}} может предложить до трёх следующих шагов: например, добавить тесты или проверить то, что не удалось. Нажмите шаг, чтобы вставить его в поле сообщения. Действует для сессий, запущенных после сохранения.",
       "label": "Предлагать следующие шаги"
     },
+    "terminalFollowsOmpProfile": {
+      "description": "",
+      "label": ""
+    },
     "terminalFontSize": {
       "description": "Размер шрифта панели терминала",
       "label": "Размер шрифта терминала"
@@ -1608,11 +1628,13 @@
     "workflowRunsForSession": "Запуски процессов этой сессии",
     "workspaceMenu": {
       "changeFolder": "Сменить папку…",
+      "ompProfile": "",
       "rename": "Переименовать"
     },
     "workspaceSwitcher": {
       "namePlaceholder": "Название проекта",
       "noWorkspace": "Нет проекта",
+      "ompProfileTitle": "",
       "openProjectEllipsis": "Открыть проект…",
       "triggerTitle": "Щелчок — переключить · двойной — переименовать · правой кнопкой — параметры"
     }
@@ -1843,6 +1865,8 @@
       "newSessionError": "Ошибка новой сессии: {{detail}}",
       "notAFolder": "Нельзя открыть как проект — это не папка: {{path}}",
       "notGitRepository": "Проект не является Git-репозиторием. Выберите «Новая сессия» для другого чата или откройте Git-проект для изолированной вкладки.",
+      "ompProfileError": "",
+      "ompProfileForNewSessions": "",
       "openFolderError": "Ошибка открытия папки: {{detail}}",
       "removedPackage": "Удалён {{spec}}",
       "removePackageFailed": "Ошибка удаления",

@@ -6,24 +6,33 @@ import type { AgentEngineKind, GitCommitMessageError } from '../shared/ipc-contr
 import { GIT_COMMIT_MESSAGE_CONFIG } from '../shared/default-settings'
 import { formatUntrustedBlock } from '../shared/untrusted-data'
 import { gitDiffPaths } from '../shared/git-diff'
+import { ompProfileArgs } from '../shared/omp-profile'
 import { appLog } from './app-log'
 import { CommitMessageGenerationError } from './commit-message-service'
 import { buildPiInvocation, buildPiRunEnv, getPiCliForEngine, type PiRpcManager } from './pi-rpc-manager'
 
 export interface CommitMessageModel {
   engine: AgentEngineKind
+  /** OMP profile whose logins the run uses; absent for the default profile and for Pi. */
+  ompProfile?: string
   /** The session's model; null leaves the choice to the engine's own default. */
   selection: { provider: string; model: string } | null
 }
 
 /** The live session's model, so the suggestion comes from the model the user is working with. */
 export async function sessionCommitMessageModel(
-  manager: Pick<PiRpcManager, 'getEngineKind' | 'sendCommand'>,
+  manager: Pick<PiRpcManager, 'getEngineKind' | 'getOmpProfile' | 'sendCommand'>,
 ): Promise<CommitMessageModel | null> {
   const response = await manager.sendCommand({ type: 'get_state' })
   const model = (response?.data as { model?: { provider?: unknown; id?: unknown } } | undefined)?.model
   if (!response?.success || typeof model?.provider !== 'string' || typeof model.id !== 'string') return null
-  return { engine: manager.getEngineKind(), selection: { provider: model.provider, model: model.id } }
+  // The session's model is only known to the account that runs the session.
+  const ompProfile = manager.getOmpProfile()?.profile
+  return {
+    engine: manager.getEngineKind(),
+    ...(ompProfile ? { ompProfile } : {}),
+    selection: { provider: model.provider, model: model.id },
+  }
 }
 
 /**
@@ -33,6 +42,7 @@ export async function sessionCommitMessageModel(
  */
 export function buildCommitMessageArgs(model: CommitMessageModel): string[] {
   return [
+    ...ompProfileArgs(model.engine, model.ompProfile),
     '-p', '--mode', 'json', '--no-session', '--no-tools', '--no-skills',
     ...(model.engine === 'omp'
       ? ['--no-rules', '--no-title', '--no-lsp']

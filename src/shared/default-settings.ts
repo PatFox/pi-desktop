@@ -38,6 +38,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   fontSize: 16,
   uiFontFamily: '',
   terminalFontSize: 12,
+  terminalFollowsOmpProfile: true,
   codeEditorFontSize: 14,
   chatWidth: DEFAULT_CHAT_WIDTH,
   showThinking: true,

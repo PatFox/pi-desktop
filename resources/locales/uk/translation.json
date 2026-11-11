@@ -751,6 +751,7 @@
     },
     "workspace": {
       "folderMissing": "Папка не існує: {{path}}",
+      "invalidOmpProfile": "",
       "managedWorktreeCannotChangeFolder": "Не можна змінити папку вкладки керованого робочого дерева. Закрийте вкладку та створіть нову",
       "noneActive": "Немає активного проєкту",
       "noSourceForNewTab": "Немає вихідного проєкту для нової вкладки",
@@ -973,6 +974,20 @@
     "failed": "Pi зупинився з помилкою.",
     "needs-approval": "Pi чекає на ваше схвалення.",
     "withSession": "{{body}} Натисніть, щоб відкрити завершену сесію."
+  },
+  "ompProfile": {
+    "dialog": {
+      "defaultOption": "",
+      "intro": "",
+      "invalidName": "",
+      "loadFailed": "",
+      "loginHint": "",
+      "newNameLabel": "",
+      "newNamePlaceholder": "",
+      "newOption": "",
+      "profileLabel": "",
+      "title": ""
+    }
   },
   "packages": {
     "catalog": {
@@ -1247,6 +1262,7 @@
       "sessionCount_many": "{{count}} сесій",
       "sessionCount_other": "{{count}} сесії"
     },
+    "ompProfileSession": "",
     "runtime": {
       "completed": "{{agent}} завершив роботу",
       "failed": "{{agent}} зупинився з помилкою",
@@ -1456,6 +1472,10 @@
       "description": "Наприкінці ходу {{agent}} може запропонувати до трьох наступних кроків: наприклад, додати тести або перевірити те, що не вдалося. Натисніть крок, щоб вставити його в поле повідомлення. Діє для сесій, запущених після збереження.",
       "label": "Пропонувати наступні кроки"
     },
+    "terminalFollowsOmpProfile": {
+      "description": "",
+      "label": ""
+    },
     "terminalFontSize": {
       "description": "Розмір шрифту панелі термінала",
       "label": "Розмір шрифту термінала"
@@ -1608,11 +1628,13 @@
     "workflowRunsForSession": "Запуски процесів цієї сесії",
     "workspaceMenu": {
       "changeFolder": "Змінити папку…",
+      "ompProfile": "",
       "rename": "Перейменувати"
     },
     "workspaceSwitcher": {
       "namePlaceholder": "Назва проєкту",
       "noWorkspace": "Немає проєкту",
+      "ompProfileTitle": "",
       "openProjectEllipsis": "Відкрити проєкт…",
       "triggerTitle": "Клацання — перемкнути · подвійне — перейменувати · правою кнопкою — параметри"
     }
@@ -1843,6 +1865,8 @@
       "newSessionError": "Помилка нової сесії: {{detail}}",
       "notAFolder": "Не можна відкрити як проєкт — це не папка: {{path}}",
       "notGitRepository": "Проєкт не є Git-репозиторієм. Виберіть «Нова сесія» для іншого чату або відкрийте Git-проєкт для ізольованої вкладки.",
+      "ompProfileError": "",
+      "ompProfileForNewSessions": "",
       "openFolderError": "Помилка відкриття папки: {{detail}}",
       "removedPackage": "Видалено {{spec}}",
       "removePackageFailed": "Помилка видалення",

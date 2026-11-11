@@ -85,6 +85,7 @@ test('an engine that exits with an error reports a typed failure without its out
 test('the session model comes from the live runtime and its engine', async () => {
   const manager = {
     getEngineKind: () => 'omp' as const,
+    getOmpProfile: () => ({ profile: undefined }),
     sendCommand: async () => ({ success: true, data: { model: { provider: 'session-provider', id: 'session-model' } } }),
   } as unknown as Parameters<typeof sessionCommitMessageModel>[0]
   assert.deepEqual(await sessionCommitMessageModel(manager), {
@@ -180,4 +181,18 @@ test('binary payload is omitted but the changed file and text diffs remain repre
   assert.match(result, /Binary file changed/)
   assert.match(result, /fix behavior/)
   assert.doesNotMatch(result, /opaque payload/)
+})
+
+test('a suggestion from an OMP session runs under that session’s profile', async () => {
+  const manager = {
+    getEngineKind: () => 'omp' as const,
+    getOmpProfile: () => ({ profile: 'work' }),
+    sendCommand: async () => ({ success: true, data: { model: { provider: 'p', id: 'm' } } }),
+  } as unknown as Parameters<typeof sessionCommitMessageModel>[0]
+  const model = await sessionCommitMessageModel(manager)
+  assert.deepEqual(model, { engine: 'omp', ompProfile: 'work', selection: { provider: 'p', model: 'm' } })
+  assert.deepEqual(buildCommitMessageArgs(model!).slice(0, 3), ['--profile', 'work', '-p'])
+  // Pi has no profiles; the default OMP profile is named explicitly.
+  assert.equal(buildCommitMessageArgs({ engine: 'pi', ompProfile: 'work', selection: null }).includes('--profile'), false)
+  assert.deepEqual(buildCommitMessageArgs({ engine: 'omp', selection: null }).slice(0, 2), ['--profile', 'default'])
 })

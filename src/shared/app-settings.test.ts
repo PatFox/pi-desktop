@@ -85,3 +85,9 @@ test('skill groups default to none and are cleaned on load', () => {
   assert.deepEqual(settings.skillGroups, [{ id: 'a', name: 'Git', skills: ['commit'], collapsed: true }])
   assert.deepEqual(normalizeStoredSettings({ skillGroups: 'bad' }, LANGUAGES).skillGroups, [])
 })
+
+test('the terminal follows the workspace OMP profile by default, and a stored choice is kept', () => {
+  assert.equal(DEFAULT_SETTINGS.terminalFollowsOmpProfile, true)
+  assert.equal(normalizeStoredSettings({ terminalFollowsOmpProfile: false }, LANGUAGES).terminalFollowsOmpProfile, false)
+  assert.equal(normalizeStoredSettings({ terminalFollowsOmpProfile: 'no' }, LANGUAGES).terminalFollowsOmpProfile, true)
+})

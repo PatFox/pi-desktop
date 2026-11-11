@@ -112,3 +112,10 @@ test('describeModelsReadFailure keeps the current English messages', () => {
     'Could not read models.json: EACCES',
   )
 })
+
+test('resolveModelsFile reads a named OMP profile from its own agent directory', () => {
+  const location = resolveModelsFile('omp', '/nonexistent-home', 'work')
+  assert.equal(location.file, join('/nonexistent-home', '.omp', 'profiles', 'work', 'agent', 'models.yml'))
+  // Pi has no profiles.
+  assert.equal(resolveModelsFile('pi', '/home/u', 'work').file, join('/home/u', '.pi', 'agent', 'models.json'))
+})

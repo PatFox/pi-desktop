@@ -709,6 +709,7 @@
     },
     "workspace": {
       "folderMissing": "文件夹不存在：{{path}}",
+      "invalidOmpProfile": "",
       "managedWorktreeCannotChangeFolder": "受管理工作树的标签页无法更改文件夹；请关闭该标签页并新建一个",
       "noneActive": "没有活动的工作区",
       "noSourceForNewTab": "没有可用于新标签页的源工作区",
@@ -922,6 +923,20 @@
     "failed": "Pi 因错误而停止。",
     "needs-approval": "Pi 正在等待你的批准。",
     "withSession": "{{body}} 点击打开已完成的会话。"
+  },
+  "ompProfile": {
+    "dialog": {
+      "defaultOption": "",
+      "intro": "",
+      "invalidName": "",
+      "loadFailed": "",
+      "loginHint": "",
+      "newNameLabel": "",
+      "newNamePlaceholder": "",
+      "newOption": "",
+      "profileLabel": "",
+      "title": ""
+    }
   },
   "packages": {
     "catalog": {
@@ -1178,6 +1193,7 @@
       "projectCount_other": "{{count}} 个项目",
       "sessionCount_other": "{{count}} 个会话"
     },
+    "ompProfileSession": "",
     "runtime": {
       "completed": "{{agent}} 已完成",
       "failed": "{{agent}} 因错误而停止",
@@ -1375,6 +1391,10 @@
       "description": "每轮结束时，{{agent}} 可以建议最多三个后续步骤，例如缺少的测试或它无法检查的工作。点击某个步骤即可将其放入消息框。保存后新开始的会话生效。",
       "label": "建议后续步骤"
     },
+    "terminalFollowsOmpProfile": {
+      "description": "",
+      "label": ""
+    },
     "terminalFontSize": {
       "description": "终端面板的字体大小",
       "label": "终端字体大小"
@@ -1521,11 +1541,13 @@
     "workflowRunsForSession": "此会话的工作流运行",
     "workspaceMenu": {
       "changeFolder": "更改文件夹…",
+      "ompProfile": "",
       "rename": "重命名"
     },
     "workspaceSwitcher": {
       "namePlaceholder": "工作区名称",
       "noWorkspace": "无工作区",
+      "ompProfileTitle": "",
       "openProjectEllipsis": "打开项目…",
       "triggerTitle": "点击切换 · 双击重命名 · 右键查看选项"
     }
@@ -1741,6 +1763,8 @@
       "newSessionError": "新建会话错误：{{detail}}",
       "notAFolder": "无法作为项目打开 — 不是文件夹：{{path}}",
       "notGitRepository": "此项目不是 Git 仓库。要另开对话请使用“新建会话”，或打开 Git 项目以使用隔离标签页。",
+      "ompProfileError": "",
+      "ompProfileForNewSessions": "",
       "openFolderError": "打开文件夹错误：{{detail}}",
       "removedPackage": "已移除 {{spec}}",
       "removePackageFailed": "移除失败",

@@ -3,6 +3,7 @@ import { IPC_CHANNELS } from '../../shared/ipc-contracts'
 import { assertTrustedSender, isString, isObject } from './validation'
 import type { IpcContext } from './context'
 import { DEFAULT_TERMINAL_COLS, DEFAULT_TERMINAL_ROWS } from '../terminal-service'
+import { loadAppSettings } from './settings'
 
 // Upper bound on a renderer-reported column or row count.
 const MAX_TERMINAL_DIMENSION = 10000
@@ -29,12 +30,16 @@ export function registerTerminalHandlers(ctx: IpcContext): void {
     assertTrustedSender(event)
     const project = workspace(id)
     const opts = isObject(options) ? options : {}
+    // `omp` typed in the terminal uses the workspace's account when the
+    // setting is on; off leaves OMP_PROFILE as the app inherited it.
+    const settings = await loadAppSettings(workspaceManager)
     return terminalService.start(
       project.id,
       {
         cwd: project.path,
         cols: dimension(opts.cols, DEFAULT_TERMINAL_COLS),
         rows: dimension(opts.rows, DEFAULT_TERMINAL_ROWS),
+        ompProfile: settings.terminalFollowsOmpProfile ? { profile: project.ompProfile } : null,
       },
       (data) => broadcast(IPC_CHANNELS.EVENT_TERMINAL_DATA, { workspaceId: project.id, data }),
       (event) => broadcast(IPC_CHANNELS.EVENT_TERMINAL_EXIT, { ...event, workspaceId: project.id })

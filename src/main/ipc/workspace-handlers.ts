@@ -1,6 +1,7 @@
 import { ipcMain } from 'electron'
 import { IPC_CHANNELS } from '../../shared/ipc-contracts'
-import { isString, isObject, isOptionalBoolean, isOptionalString } from './validation'
+import { assertTrustedSender, isString, isObject, isOptionalBoolean, isOptionalString } from './validation'
+import { normalizeOmpProfile } from '../../shared/omp-profile'
 import { validateStartOptions, applyModelDefaults, applyResumePreference, applyPermissionModeToStartOptions } from './pi-start-options'
 import { loadAppSettings } from './settings'
 import type { AppSettings, Workspace, WorkspaceTabOptions } from '../../shared/ipc-contracts'
@@ -72,6 +73,18 @@ export function registerWorkspaceHandlers(ctx: IpcContext): void {
     if (!isString(workspaceId)) throw new Error('workspaceId must be a string')
     if (!isString(name)) throw new Error('name must be a string')
     await workspaceManager.renameWorkspace(workspaceId, name)
+  })
+
+  // Which account a workspace's sessions run under: only the app's own window
+  // may change it, and only to a name OMP itself would accept.
+  ipcMain.handle(IPC_CHANNELS.WORKSPACE_SET_OMP_PROFILE, async (event, workspaceId: unknown, ompProfile: unknown) => {
+    assertTrustedSender(event)
+    if (!isString(workspaceId)) throw new Error('workspaceId must be a string')
+    const profile = normalizeOmpProfile(ompProfile)
+    if (profile === null) {
+      throw new Error(t('errors.workspace.invalidOmpProfile', { profile: String(ompProfile) }))
+    }
+    return workspaceManager.setWorkspaceOmpProfile(workspaceId, profile)
   })
 
   ipcMain.handle(IPC_CHANNELS.WORKSPACE_CHANGE_PATH, async (_event, workspaceId: unknown, newPath: unknown) => {

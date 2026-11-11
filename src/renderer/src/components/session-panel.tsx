@@ -11,7 +11,8 @@ import { useContextMenu, buildSessionContextMenu } from './context-menu'
 import { getSessionMenuPosition, type MenuPosition } from './session-menu-position'
 import { resolveRunSessionId } from '../utils/workflow-runs'
 import { SessionRuntimeIndicator } from './session-runtime-indicator'
-import { getSessionEngineLabel, hasMixedSessionEngines } from './sidebar-session-labels'
+import { getSessionEngineLabel, getSessionProfileLabel, hasMixedOmpProfiles, hasMixedSessionEngines } from './sidebar-session-labels'
+import { agentEngineLabel } from '../../../shared/agent-engine-label'
 import type { Translate } from '../../../shared/i18n'
 import { isImeComposing } from '../utils/ime-composing'
 
@@ -106,6 +107,7 @@ export function SessionPanel(): React.JSX.Element {
   // Engine tags are gated on the whole known list, not on the filtered groups,
   // so a row keeps the same tag while the user searches or changes scope.
   const showEngineTags = useMemo(() => hasMixedSessionEngines(sessionList), [sessionList])
+  const showProfileTags = useMemo(() => hasMixedOmpProfiles(sessionList), [sessionList])
 
   // Workspace auto-switch/create + session switch + show Chat, shared with the
   // sidebar and the quick switcher.
@@ -336,6 +338,7 @@ export function SessionPanel(): React.JSX.Element {
                           session={session}
                           isActive={sessionState?.sessionFile === session.path || sessionRuntimes[activeSessionRuntimeId ?? '']?.sessionPath === session.path}
                           showEngineTag={showEngineTags}
+                          showProfileTag={showProfileTags}
                           onSelect={() => handleSwitchSession(session)}
                         />
                       ))}
@@ -376,11 +379,14 @@ function SessionEntry({
   session,
   isActive,
   showEngineTag,
+  showProfileTag,
   onSelect,
 }: {
   session: SessionListItem
   isActive: boolean
   showEngineTag: boolean
+  /** Tag the OMP profile, shown when sessions of several profiles are listed. */
+  showProfileTag: boolean
   onSelect: () => void
 }): React.JSX.Element {
   const { t, i18n } = useTranslation()
@@ -400,6 +406,7 @@ function SessionEntry({
   const autoTag = autoTags[session.sessionId]
   const isArchived = session.sessionId in archivedSessions
   const engineLabel = showEngineTag ? getSessionEngineLabel(session) : null
+  const profileLabel = showProfileTag ? getSessionProfileLabel(session) : null
   const [showTagInput, setShowTagInput] = useState(false)
   const [tagInput, setTagInput] = useState('')
   const [menuOpen, setMenuOpen] = useState(false)
@@ -582,6 +589,15 @@ function SessionEntry({
         {engineLabel && (
           <span className="shrink-0 text-[10px] text-faint" title={t('sessions.engineSession', { engine: engineLabel })}>
             {engineLabel}
+          </span>
+        )}
+        {/* Which account (OMP profile) owns it: reopening uses that account. */}
+        {profileLabel && (
+          <span
+            className="shrink-0 rounded bg-accent-bg px-1 text-[10px] text-accent-fg"
+            title={t('sessions.ompProfileSession', { engine: agentEngineLabel('omp'), profile: profileLabel })}
+          >
+            {profileLabel}
           </span>
         )}
         <div className="text-[10px] text-faint shrink-0">

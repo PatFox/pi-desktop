@@ -79,3 +79,32 @@ test('each engine resumes only from its own store, in its own directory naming',
     assert.notEqual(await findLatestProjectSession(ompDirs), olderOmp)
   })
 })
+
+test('an OMP profile resumes from its own store, never the default one', async (t) => {
+  await withBase(async (base) => {
+    const savedHome = process.env.HOME
+    t.after(() => {
+      if (savedHome === undefined) delete process.env.HOME
+      else process.env.HOME = savedHome
+      delete process.env.OMP_CODING_AGENT_DIR
+    })
+    process.env.HOME = base
+    delete process.env.OMP_CODING_AGENT_DIR
+    const project = join(homedir(), 'pi-desktop-resume-test-project')
+
+    const defaultDirs = await engineProjectSessionDirs('omp', project)
+    const workDirs = await engineProjectSessionDirs('omp', project, 'work')
+    const workRoot = join(base, '.omp', 'profiles', 'work', 'agent', 'sessions')
+    assert.deepEqual(workDirs, [
+      join(workRoot, '-pi-desktop-resume-test-project'),
+      join(workRoot, sanitizePath(project)),
+    ])
+    // Pi has no profiles: the argument does not move its store.
+    assert.deepEqual(await engineProjectSessionDirs('pi', project, 'work'), await engineProjectSessionDirs('pi', project))
+
+    // The default profile's session is newer, but the workspace runs as `work`.
+    await writeSession(defaultDirs[0], 'default.jsonl', HEADER + USER_TURN, 9_000)
+    const workSession = await writeSession(workDirs[0], 'work.jsonl', HEADER + USER_TURN, 1_000)
+    assert.equal(await findLatestProjectSession(workDirs), workSession)
+  })
+})

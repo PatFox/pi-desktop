@@ -1,6 +1,6 @@
 import { ipcMain } from 'electron'
 import { isDisposableSessionFile, WorkspaceManager } from '../workspace-manager'
-import { engineForSessionPath, getSessionRoots, isWithinSessionRoots } from '../pi-paths'
+import { getSessionStores, isWithinSessionRoots, type SessionStore } from '../pi-paths'
 import {
   sanitizePath,
   sessionDirName,
@@ -218,12 +218,15 @@ export function registerSessionHandlers(ctx: IpcContext): void {
     // session: the empty chat is already right.
     const current = workspaceManager.getWorkspaceSessionRuntime(workspace.id)
     if (current) return current.sessionPath
-    // Otherwise the newest session of the engine the user selected. Session
-    // tabs are live runtimes, one agent process each, and are not kept across
-    // a restart: only this one session starts again.
+    // Otherwise the newest session of the engine the user selected, in the
+    // store of the workspace's OMP profile (the one a start would continue).
+    // Session tabs are live runtimes, one agent process each, and are not kept
+    // across a restart: only this one session starts again.
     const settings = await loadAppSettings(workspaceManager)
     if (!settings.resumeLastSession) return null
-    return findLatestProjectSession(await engineProjectSessionDirs(getConfiguredEngineKind(), workspace.path))
+    return findLatestProjectSession(
+      await engineProjectSessionDirs(getConfiguredEngineKind(), workspace.path, workspace.ompProfile)
+    )
   })
 
   ipcMain.handle(IPC_CHANNELS.SESSION_GET_STATE, async () => {
@@ -406,10 +409,10 @@ function createListSessions(wm: WorkspaceManager) {
       const workspaceBySanitized = new Map(
         wm.getWorkspaces().map((ws) => [workspaceMatchKey(sanitizePath(ws.path)), ws] as const)
       )
-      // Pi and OMP each keep their sessions in their own store, so a single
-      // root would hide every session started under the other engine.
-      for (const root of getSessionRoots()) {
-        await collectSessionFiles(entries, root, workspaceBySanitized, workspaceMatched)
+      // Pi, OMP, and each named OMP profile keep their sessions in their own
+      // store, so a single root would hide every session started elsewhere.
+      for (const store of getSessionStores()) {
+        await collectSessionFiles(entries, store, workspaceBySanitized, workspaceMatched)
       }
       entries.sort((a, b) => b.lastModified - a.lastModified)
       // Only read names for the sessions we actually return (avoids reading the
@@ -448,17 +451,17 @@ function createListAllSessions(wm: WorkspaceManager) {
  * `workspaceMatched`, which fillSessionLabels reads to leave their project
  * path alone.
  *
- * Every row is stamped with the engine that owns this root, so the UI can
- * label it and opening it can relaunch that engine instead of the configured
- * default.
+ * Every row is stamped with the engine (and OMP profile) that owns this store,
+ * so the UI can label it and opening it can relaunch that owner instead of the
+ * configured default.
  */
-async function collectSessionFiles(
+export async function collectSessionFiles(
   entries: SessionEntry[],
-  sessionsRoot: string,
+  store: SessionStore,
   workspaceBySanitized: Map<string, { path: string; name: string }>,
   workspaceMatched: Set<SessionEntry>
 ): Promise<void> {
-  const engine = engineForSessionPath(sessionsRoot) ?? undefined
+  const { engine, ompProfile, root: sessionsRoot } = store
   try {
     const projectDirs = await readdir(sessionsRoot, { withFileTypes: true })
     await Promise.all(
@@ -499,6 +502,7 @@ async function collectSessionFiles(
                 preview: null,
                 sessionId: item.name.replace(JSONL_EXTENSION, ''),
                 engine,
+                ...(ompProfile ? { ompProfile } : {}),
                 lastModified: fileStat.mtimeMs,
                 messageCount: 0,
                 projectPath,

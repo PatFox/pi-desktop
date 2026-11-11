@@ -723,6 +723,7 @@
     },
     "workspace": {
       "folderMissing": "Folder does not exist: {{path}}",
+      "invalidOmpProfile": "\"{{profile}}\" is not a valid OMP profile name. Use lower-case letters, digits, dots, dashes and underscores, starting with a letter or digit.",
       "managedWorktreeCannotChangeFolder": "Managed worktree tabs cannot change folder; close the tab and create another one",
       "noneActive": "No active workspace",
       "noSourceForNewTab": "No source workspace available for a new tab",
@@ -939,6 +940,20 @@
     "failed": "Pi stopped with an error.",
     "needs-approval": "Pi is waiting for your approval.",
     "withSession": "{{body}} Click to open the finished session."
+  },
+  "ompProfile": {
+    "dialog": {
+      "defaultOption": "Default profile",
+      "intro": "New sessions in {{workspace}} run under this {{engine}} profile, with its own logins, models, MCP servers and plugins. Open sessions keep the profile they started with.",
+      "invalidName": "Use lower-case letters, digits, dots, dashes and underscores, starting with a letter or digit (at most 64 characters).",
+      "loadFailed": "Could not list the {{engine}} profiles: {{detail}}",
+      "loginHint": "To sign in to a new profile, run {{command}} in this workspace's terminal.",
+      "newNameLabel": "New profile name",
+      "newNamePlaceholder": "e.g. employer-a",
+      "newOption": "New profile…",
+      "profileLabel": "Profile",
+      "title": "{{engine}} profile"
+    }
   },
   "packages": {
     "catalog": {
@@ -1201,6 +1216,7 @@
       "sessionCount_one": "{{count}} session",
       "sessionCount_other": "{{count}} sessions"
     },
+    "ompProfileSession": "{{engine}} profile \"{{profile}}\": reopening this session uses that account",
     "runtime": {
       "completed": "{{agent}} finished",
       "failed": "{{agent}} stopped with an error",
@@ -1402,6 +1418,10 @@
       "description": "At the end of a turn, {{agent}} can suggest up to three next steps, such as missing tests or work it could not check. Click a step to put it in the message box. Applies to sessions that start after you save.",
       "label": "Suggest Next Steps"
     },
+    "terminalFollowsOmpProfile": {
+      "description": "A workspace's terminal sets OMP_PROFILE to the workspace's {{engine}} profile, so {{engine}} commands typed there (such as signing in) use the same account as its sessions. Applies to terminals opened after the change.",
+      "label": "Terminal uses the workspace's {{engine}} profile"
+    },
     "terminalFontSize": {
       "description": "Font size for the terminal panel",
       "label": "Terminal Font Size"
@@ -1550,11 +1570,13 @@
     "workflowRunsForSession": "Workflow runs for this session",
     "workspaceMenu": {
       "changeFolder": "Change folder…",
+      "ompProfile": "{{engine}} profile…",
       "rename": "Rename"
     },
     "workspaceSwitcher": {
       "namePlaceholder": "Workspace name",
       "noWorkspace": "No workspace",
+      "ompProfileTitle": "New sessions in this workspace run under the {{engine}} profile \"{{profile}}\"",
       "openProjectEllipsis": "Open project…",
       "triggerTitle": "Click to switch · double-click to rename · right-click for options"
     }
@@ -1775,6 +1797,8 @@
       "newSessionError": "New session error: {{detail}}",
       "notAFolder": "Cannot open as project — not a folder: {{path}}",
       "notGitRepository": "This project is not a Git repository. Use New session for another conversation, or open a Git project for an isolated tab.",
+      "ompProfileError": "Could not change the {{engine}} profile: {{detail}}",
+      "ompProfileForNewSessions": "New sessions in this workspace now run under the {{engine}} profile \"{{profile}}\". Open sessions keep the profile they started with.",
       "openFolderError": "Open folder error: {{detail}}",
       "removedPackage": "Removed {{spec}}",
       "removePackageFailed": "Remove failed",

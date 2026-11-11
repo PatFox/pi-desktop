@@ -29,6 +29,7 @@ import { getGuiDataPath } from './app-data-paths'
 import { loadPiDotenv } from './pi-dotenv'
 import { childProcessEnv } from './windows-exe-search'
 import { t, tEnglish } from '../shared/i18n'
+import { ompProfileArgs } from '../shared/omp-profile'
 
 /**
  * Manages a Pi RPC child process.
@@ -710,6 +711,9 @@ export class PiRpcManager extends EventEmitter {
   private readonly streamingText = new StreamingTextTracker()
   private startInFlight: Promise<PiStatus> | null = null
   private runningEngine: 'pi' | 'omp' | null = null
+  // The OMP profile of the last OMP child (profile undefined = default); null
+  // when this manager has not spawned OMP, so callers fall back to the workspace.
+  private runningOmpProfile: { profile: string | undefined } | null = null
   private readonly exitWaiters = new Map<ChildProcess, Set<() => void>>()
   // Set while a spawn attempt awaits readiness; handleLine invokes it when the
   // startup probe's correlated response arrives. Cleared once the attempt settles.
@@ -757,6 +761,15 @@ export class PiRpcManager extends EventEmitter {
   /** Engine identity of the live child, not the currently configured future one. */
   getEngineKind(): AgentEngineKind {
     return this.runningEngine ?? getConfiguredEngineKind()
+  }
+
+  /**
+   * The OMP profile the last OMP child ran under: `{ profile: undefined }` for
+   * the default profile, null when this manager has not spawned OMP (then the
+   * workspace's profile is the one a start would use).
+   */
+  getOmpProfile(): { profile: string | undefined } | null {
+    return this.runningOmpProfile
   }
 
   async start(options: PiStartOptions = {}): Promise<PiStatus> {
@@ -873,8 +886,12 @@ export class PiRpcManager extends EventEmitter {
   private spawnAndAwaitReady(
     options: PiStartOptions
   ): Promise<'ready' | 'crashed' | 'timeout' | 'aborted'> {
-    const args = buildPiArgs(options)
     const cli = resolveStartCli(options)
+    const engine = cli.kind ?? 'pi'
+    // The profile is pinned on the command line, ahead of everything else, so
+    // an OMP_PROFILE the app inherited (shell, ~/.pi/.env) cannot redirect a
+    // workspace's session to another account. Pi has no profiles.
+    const args = [...ompProfileArgs(engine, options.ompProfile), ...buildPiArgs(options)]
 
     const spawnOptions: SpawnOptions = {
       stdio: ['pipe', 'pipe', 'pipe'],
@@ -905,7 +922,8 @@ export class PiRpcManager extends EventEmitter {
       return Promise.resolve('crashed')
     }
     this.process = proc
-    this.runningEngine = cli.kind ?? 'pi'
+    this.runningEngine = engine
+    this.runningOmpProfile = engine === 'omp' ? { profile: options.ompProfile } : null
     this.startupSawOutput = false
     this.startupPhase = 'spawning'
     this.setupStreams()

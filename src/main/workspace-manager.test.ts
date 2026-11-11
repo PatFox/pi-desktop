@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { mkdir, mkdtemp, readFile, writeFile, access, realpath, symlink } from 'fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile, access, realpath, symlink } from 'fs/promises'
 import { existsSync } from 'fs'
 import { spawnSync } from 'child_process'
 import { tmpdir } from 'os'
@@ -19,7 +19,7 @@ import { isPathWithin } from '../../resources/path-within'
 import { REPO_MAP_ENV, parseRepoMap } from '../../resources/repo-set-map'
 import { getOmpSessionsRoot, getSessionsRoot } from './pi-paths'
 import { PiRpcManager } from './pi-rpc-manager'
-import { isDisposableSessionFile, MAX_LIVE_SESSION_RUNTIMES, WorkspaceManager } from './workspace-manager'
+import { bindStartToSessionOwner, isDisposableSessionFile, MAX_LIVE_SESSION_RUNTIMES, WorkspaceManager } from './workspace-manager'
 
 async function freshDataDir(): Promise<void> {
   configureGuiDataDir(await mkdtemp(join(tmpdir(), 'pi-ws-')))
@@ -1379,5 +1379,127 @@ test('an in-place linked task edits the user checkouts and never removes them', 
     assert.equal(result.preservedWorktreePaths, undefined)
     assert.equal(existsSync(paths.app), true)
     assert.equal(existsSync(paths.lib), true)
+  })
+})
+
+/**
+ * Each OMP profile has its own session store and its own logins. A session
+ * must reopen under the profile that wrote it, wherever it is opened from; a
+ * new session runs under the workspace's profile.
+ */
+async function withOmpProfileHome(run: (home: string) => void | Promise<void>): Promise<void> {
+  const home = await mkdtemp(join(tmpdir(), 'pi-ws-profiles-'))
+  const saved = {
+    HOME: process.env.HOME,
+    PI_CODING_AGENT_DIR: process.env.PI_CODING_AGENT_DIR,
+    OMP_CODING_AGENT_DIR: process.env.OMP_CODING_AGENT_DIR,
+  }
+  process.env.HOME = home
+  delete process.env.PI_CODING_AGENT_DIR
+  delete process.env.OMP_CODING_AGENT_DIR
+  try {
+    await mkdir(join(home, '.omp', 'profiles', 'work', 'agent', 'sessions'), { recursive: true })
+    await run(home)
+  } finally {
+    for (const [key, value] of Object.entries(saved)) {
+      if (value === undefined) delete process.env[key]
+      else process.env[key] = value
+    }
+    await rm(home, { recursive: true, force: true })
+  }
+}
+
+test('a new session runs under the workspace profile', async () => {
+  await withOmpProfileHome(() => {
+    const options: PiStartOptions = { cwd: '/p' }
+    bindStartToSessionOwner(options, { ompProfile: 'work' })
+    assert.equal(options.ompProfile, 'work')
+    assert.equal(options.engine, undefined, 'a new session keeps the configured engine')
+
+    const defaultOptions: PiStartOptions = { cwd: '/p' }
+    bindStartToSessionOwner(defaultOptions, {})
+    assert.equal('ompProfile' in defaultOptions, false)
+  })
+})
+
+test('a resumed session keeps the profile that wrote it, not the workspace profile', async () => {
+  await withOmpProfileHome((home) => {
+    const workSession = join(home, '.omp', 'profiles', 'work', 'agent', 'sessions', '--p--', 'a.jsonl')
+    const fromDefaultWorkspace: PiStartOptions = { sessionPath: workSession }
+    bindStartToSessionOwner(fromDefaultWorkspace, {})
+    assert.deepEqual(
+      { engine: fromDefaultWorkspace.engine, ompProfile: fromDefaultWorkspace.ompProfile },
+      { engine: 'omp', ompProfile: 'work' }
+    )
+
+    // A default-profile session opened from a `work` workspace stays default.
+    const defaultSession = join(home, '.omp', 'agent', 'sessions', '--p--', 'b.jsonl')
+    const fromWorkWorkspace: PiStartOptions = { sessionPath: defaultSession }
+    bindStartToSessionOwner(fromWorkWorkspace, { ompProfile: 'work' })
+    assert.equal(fromWorkWorkspace.engine, 'omp')
+    assert.equal(fromWorkWorkspace.ompProfile, undefined)
+  })
+})
+
+test('a fork takes the profile of its source', async () => {
+  await withOmpProfileHome((home) => {
+    const source = join(home, '.omp', 'profiles', 'work', 'agent', 'sessions', '--p--', 'source.jsonl')
+    const options: PiStartOptions = { forkSessionPath: source }
+    bindStartToSessionOwner(options, {})
+    assert.equal(options.ompProfile, 'work')
+  })
+})
+
+test('an explicit engine and profile from the caller are kept', async () => {
+  await withOmpProfileHome((home) => {
+    const workSession = join(home, '.omp', 'profiles', 'work', 'agent', 'sessions', '--p--', 'a.jsonl')
+    const options: PiStartOptions = { sessionPath: workSession, engine: 'pi', ompProfile: undefined }
+    bindStartToSessionOwner(options, { ompProfile: 'work' })
+    assert.equal(options.engine, 'pi')
+    assert.equal(options.ompProfile, undefined)
+  })
+})
+
+test('a workspace OMP profile is saved, reloaded, and cleared back to the default', async () => {
+  await freshDataDir()
+  let id = ''
+  await withManager(async (mgr) => {
+    const ws = await mgr.createWorkspace('Employer A', await project())
+    id = ws.id
+    assert.deepEqual(await mgr.setWorkspaceOmpProfile(id, 'employer-a'), { runtimesRunning: false })
+  })
+  await withManager(async (reloaded) => {
+    assert.equal(reloaded.getWorkspaces().find((w) => w.id === id)?.ompProfile, 'employer-a')
+    await reloaded.setWorkspaceOmpProfile(id, undefined)
+    assert.equal('ompProfile' in reloaded.getWorkspaces().find((w) => w.id === id)!, false)
+  })
+  const saved = JSON.parse(await readFile(getGuiDataPath('workspaces.json'), 'utf-8'))
+  assert.equal('ompProfile' in saved.workspaces[0], false, 'the default profile is stored as no profile')
+})
+
+test('setting an OMP profile OMP would refuse is rejected and nothing is saved', async () => {
+  await freshDataDir()
+  await withManager(async (mgr) => {
+    const ws = await mgr.createWorkspace('Alpha', await project())
+    await assert.rejects(() => mgr.setWorkspaceOmpProfile(ws.id, '../escape'))
+    await assert.rejects(() => mgr.setWorkspaceOmpProfile(ws.id, 'Upper'))
+    assert.equal(mgr.getWorkspaces()[0].ompProfile, undefined)
+  })
+})
+
+test('an invalid stored OMP profile falls back to the default profile on load', async () => {
+  await freshDataDir()
+  const dir = await project()
+  await writeFile(getGuiDataPath('workspaces.json'), JSON.stringify({
+    workspaces: [
+      { id: 'bad', name: 'Bad', path: dir, createdAt: 1, lastActiveAt: 1, color: '#000', ompProfile: '../../etc' },
+      { id: 'named-default', name: 'D', path: dir, createdAt: 1, lastActiveAt: 1, color: '#000', ompProfile: 'default' },
+      { id: 'good', name: 'Good', path: dir, createdAt: 1, lastActiveAt: 1, color: '#000', ompProfile: 'work' },
+    ],
+    activeWorkspaceId: 'good',
+  }))
+  await withManager(async (mgr) => {
+    const profiles = Object.fromEntries(mgr.getWorkspaces().map((w) => [w.id, w.ompProfile]))
+    assert.deepEqual(profiles, { bad: undefined, 'named-default': undefined, good: 'work' })
   })
 })

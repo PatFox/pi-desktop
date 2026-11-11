@@ -13,7 +13,8 @@ import type { WorkspaceManager } from './workspace-manager'
 import { getConfiguredEngineKind, getPiCli, getPiResolution } from './pi-rpc-manager'
 import { loadPiDotenv } from './pi-dotenv'
 import { workspaceTrustStore } from './workspace-trust'
-import { getOmpSessionsRoot, getSessionsRoot } from './pi-paths'
+import { getSessionsRoot } from './pi-paths'
+import { ompSessionsDir } from './omp-paths'
 import { getGuiDataDir } from './app-data-paths'
 import { appLog } from './app-log'
 import { validatePermissionRulesFile } from '../../resources/permission-rules'
@@ -50,8 +51,11 @@ export async function collectDiagnostics(
     activeWorkspace && existsSync(activeWorkspace.path)
       ? activeWorkspace.path
       : (process.env.HOME ?? process.cwd())
+  // The report describes the configured engine as the active workspace runs
+  // it, so OMP files and sessions are read from that workspace's profile.
+  const ompProfile = activeWorkspace?.ompProfile
   const piVersionResult = cli.found
-    ? await runPiCli(['--version'], versionCwd, PI_VERSION_TIMEOUT_MS)
+    ? await runPiCli(['--version'], versionCwd, PI_VERSION_TIMEOUT_MS, undefined, ompProfile)
     : { success: false, output: '' }
 
   const workspaces: DiagnosticsWorkspaceInfo[] = workspaceManager.getWorkspaces().map((ws) => ({
@@ -63,12 +67,12 @@ export async function collectDiagnostics(
     piStatus: workspaceManager.getPiManager(ws.id)?.getStatus().status ?? 'stopped',
   }))
 
-  const modelsRead = await readModelsConfigFile(getConfiguredEngineKind())
+  const modelsRead = await readModelsConfigFile(getConfiguredEngineKind(), ompProfile)
   const providers = 'config' in modelsRead ? summarizeProviders(modelsRead.config, { ...loadPiDotenv(), ...process.env }) : null
   const providersError = 'failure' in modelsRead ? reportModelsReadFailure(modelsRead.location.name, modelsRead.failure) : null
 
   const globalRules = await readGlobalRuleCount()
-  const sessionsRoot = getConfiguredEngineKind() === 'omp' ? getOmpSessionsRoot() : getSessionsRoot()
+  const sessionsRoot = getConfiguredEngineKind() === 'omp' ? ompSessionsDir(ompProfile) : getSessionsRoot()
 
   return {
     generatedAt: Date.now(),

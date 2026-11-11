@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { once } from 'node:events'
@@ -667,4 +667,60 @@ test('RpcTimeoutError is identified by class, not by message text', () => {
   assert.equal(error.name, 'RpcTimeoutError')
   assert.equal(error.commandType, 'get_state')
   assert.equal(error.message, 'Command get_state timed out after 30000ms')
+})
+
+/**
+ * A workspace's OMP profile reaches the engine as a leading `--profile` flag.
+ * An explicit flag (even `default`) outranks an OMP_PROFILE the app inherited,
+ * so a session can never open under another account's logins. Pi has no
+ * profiles and gets no flag.
+ */
+const ARGV_RECORDING_ENGINE_SOURCE = `#!/usr/bin/env node
+require('fs').writeFileSync(process.env.FAKE_ARGV_FILE, JSON.stringify(process.argv.slice(2)))
+process.stdout.write(JSON.stringify({ id: '${PROBE_ID}', type: 'response', command: 'get_state', success: true }) + '\\n')
+process.stdin.resume()
+`
+
+async function recordedStartArgv(
+  engine: 'pi' | 'omp',
+  options: { ompProfile?: string },
+): Promise<{ argv: string[]; ompProfile: { profile: string | undefined } | null }> {
+  const dir = mkdtempSync(join(tmpdir(), 'pi-argv-engine-'))
+  const script = join(dir, engine)
+  const argvFile = join(dir, 'argv.json')
+  writeFileSync(script, ARGV_RECORDING_ENGINE_SOURCE)
+  chmodSync(script, 0o755)
+  const savedShell = process.env.SHELL
+  process.env.SHELL = join(dir, 'no-such-shell')
+  setPiExecutableOverride(script, engine)
+  const manager = new PiRpcManager({ waitingNoticeMs: TEST_WAITING_NOTICE_MS, readyMs: TEST_READY_MS })
+  try {
+    const status = await manager.start({ ...options, env: { FAKE_ARGV_FILE: argvFile } })
+    assert.equal(status.status, 'running', status.error ?? '')
+    return { argv: JSON.parse(readFileSync(argvFile, 'utf8')) as string[], ompProfile: manager.getOmpProfile() }
+  } finally {
+    manager.stop()
+    setPiExecutableOverride(null, 'auto')
+    if (savedShell === undefined) delete process.env.SHELL
+    else process.env.SHELL = savedShell
+    rmSync(dir, { recursive: true, force: true })
+  }
+}
+
+test('an OMP start leads with the workspace profile', SKIP_ON_WINDOWS, async () => {
+  const { argv, ompProfile } = await recordedStartArgv('omp', { ompProfile: 'work' })
+  assert.deepEqual(argv.slice(0, 4), ['--profile', 'work', '--mode', 'rpc'])
+  assert.deepEqual(ompProfile, { profile: 'work' })
+})
+
+test('an OMP start on the default profile names it explicitly', SKIP_ON_WINDOWS, async () => {
+  const { argv, ompProfile } = await recordedStartArgv('omp', {})
+  assert.deepEqual(argv.slice(0, 4), ['--profile', 'default', '--mode', 'rpc'])
+  assert.deepEqual(ompProfile, { profile: undefined })
+})
+
+test('a Pi start gets no profile flag, even when one is set', SKIP_ON_WINDOWS, async () => {
+  const { argv, ompProfile } = await recordedStartArgv('pi', { ompProfile: 'work' })
+  assert.equal(argv.includes('--profile'), false)
+  assert.equal(ompProfile, null)
 })

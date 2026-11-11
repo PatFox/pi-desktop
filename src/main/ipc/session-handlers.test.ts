@@ -211,3 +211,55 @@ test('the resume target is the project runtime session, else its newest used fil
     await rm(root, { recursive: true, force: true })
   }
 })
+
+test('session rows carry the OMP profile whose store holds them', async (t) => {
+  const require = createRequire(import.meta.url)
+  const electronPath = require.resolve('electron')
+  require('electron')
+  const electronModule = require.cache[electronPath]!
+  const originalExports = electronModule.exports
+  electronModule.exports = {
+    ipcMain: { handle: () => undefined },
+    app: { isPackaged: false, getAppPath: () => process.cwd() },
+  }
+  const home = await mkdtemp(join(tmpdir(), 'pi-session-profiles-'))
+  const saved = {
+    HOME: process.env.HOME,
+    PI_CODING_AGENT_DIR: process.env.PI_CODING_AGENT_DIR,
+    OMP_CODING_AGENT_DIR: process.env.OMP_CODING_AGENT_DIR,
+  }
+  t.after(async () => {
+    electronModule.exports = originalExports
+    for (const [key, value] of Object.entries(saved)) {
+      if (value === undefined) delete process.env[key]
+      else process.env[key] = value
+    }
+    await rm(home, { recursive: true, force: true })
+  })
+  process.env.HOME = home
+  delete process.env.PI_CODING_AGENT_DIR
+  delete process.env.OMP_CODING_AGENT_DIR
+
+  const project = '--work-demo--'
+  const write = async (sessionsRoot: string, name: string): Promise<void> => {
+    await mkdir(join(sessionsRoot, project), { recursive: true })
+    await writeFile(join(sessionsRoot, project, name), '{"type":"session"}\n')
+  }
+  await write(join(home, '.omp', 'agent', 'sessions'), 'default.jsonl')
+  await write(join(home, '.omp', 'profiles', 'work', 'agent', 'sessions'), 'work.jsonl')
+  await write(join(home, '.pi', 'agent', 'sessions'), 'pi.jsonl')
+
+  const { collectSessionFiles } = await import('./session-handlers')
+  const { getSessionStores } = await import('../pi-paths')
+  const rows: Array<Parameters<typeof collectSessionFiles>[0][number]> = []
+  for (const store of getSessionStores()) await collectSessionFiles(rows, store, new Map(), new Set())
+
+  const owners = Object.fromEntries(rows.map((row) => [row.sessionId, { engine: row.engine, ompProfile: row.ompProfile }]))
+  assert.deepEqual(owners, {
+    pi: { engine: 'pi', ompProfile: undefined },
+    default: { engine: 'omp', ompProfile: undefined },
+    work: { engine: 'omp', ompProfile: 'work' },
+  })
+  // The default profile's rows carry no profile key at all.
+  assert.equal('ompProfile' in rows.find((row) => row.sessionId === 'default')!, false)
+})

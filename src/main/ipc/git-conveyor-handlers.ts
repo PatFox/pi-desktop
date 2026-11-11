@@ -16,7 +16,7 @@ import {
 } from '../git-conveyor'
 import { CommitMessageService } from '../commit-message-service'
 import { generateCommitMessage, sessionCommitMessageModel, type CommitMessageModel } from '../commit-message-generator'
-import { activeEngineKind } from './active-engine'
+import { activeEngineKind, activeOmpProfile } from './active-engine'
 import { loadAppSettings } from './settings'
 import type { IpcContext } from './context'
 import { t } from '../../shared/i18n'
@@ -34,8 +34,10 @@ async function commitMessageModel(ctx: IpcContext): Promise<CommitMessageModel> 
   const session = manager?.getStatus().status === 'running' ? await sessionCommitMessageModel(manager) : null
   if (session) return session
   const settings = await loadAppSettings(ctx.workspaceManager)
+  const ompProfile = activeOmpProfile(ctx.workspaceManager)
   return {
     engine: activeEngineKind(ctx.workspaceManager),
+    ...(ompProfile ? { ompProfile } : {}),
     selection: settings.defaultProvider && settings.defaultModel
       ? { provider: settings.defaultProvider, model: settings.defaultModel } : null,
   }

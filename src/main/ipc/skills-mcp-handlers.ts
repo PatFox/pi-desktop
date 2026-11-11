@@ -8,6 +8,8 @@ import type { IpcContext } from './context'
 import { getPiCli } from '../pi-rpc-manager'
 import { listSkills, mergeRpcSkills, readListedSkillFile } from '../skills-discovery'
 import { isPiBuiltInExtensionCommand } from '../../shared/pi-command'
+import { activeOmpProfile } from './active-engine'
+import { ompAgentDirIn } from '../omp-paths'
 
 export function registerSkillsMcpHandlers(ctx: IpcContext): void {
   const { workspaceManager } = ctx
@@ -19,7 +21,7 @@ export function registerSkillsMcpHandlers(ctx: IpcContext): void {
     const cwd = ws?.path ?? process.cwd()
     const pi = workspaceManager.getActivePiManager()
     const engine = pi?.getEngineKind() ?? getPiCli().kind ?? 'pi'
-    const skills = await listSkills(cwd, engine)
+    const skills = await listSkills(cwd, engine, undefined, activeOmpProfile(workspaceManager))
     // The disk scan cannot see skills shipped by installed packages/plugins,
     // but the running engine reports them in its command catalog — merge those
     // in so the panel matches what the agent can actually invoke.
@@ -45,7 +47,7 @@ export function registerSkillsMcpHandlers(ctx: IpcContext): void {
 
   ipcMain.handle(IPC_CHANNELS.MCP_SERVERS_LIST, async () => {
     const ws = workspaceManager.getActiveWorkspace()
-    return listMcpServers(ws?.path)
+    return listMcpServers(ws?.path, activeOmpProfile(workspaceManager))
   })
 }
 
@@ -82,20 +84,22 @@ interface McpServerInfo {
   status: 'configured' | 'unknown'
 }
 
-async function listMcpServers(wsPath?: string): Promise<McpServerInfo[]> {
+async function listMcpServers(wsPath: string | undefined, ompProfile: string | undefined): Promise<McpServerInfo[]> {
   const servers: McpServerInfo[] = []
   const homeDir = process.env.HOME ?? process.env.USERPROFILE ?? ''
   const omp = getPiCli().kind === 'omp'
+  // OMP's global MCP servers live in the active profile's agent directory.
+  const ompAgentDir = ompAgentDirIn(homeDir, ompProfile)
   const globalSettingsPaths = omp
     ? [
-        join(homeDir, '.omp', 'agent', 'mcp.json'),
-        join(homeDir, '.omp', 'agent', '.mcp.json'),
+        join(ompAgentDir, 'mcp.json'),
+        join(ompAgentDir, '.mcp.json'),
         join(homeDir, '.pi', 'agent', 'settings.json'),
       ]
     : [
         join(homeDir, '.pi', 'agent', 'settings.json'),
-        join(homeDir, '.omp', 'agent', 'mcp.json'),
-        join(homeDir, '.omp', 'agent', '.mcp.json'),
+        join(ompAgentDir, 'mcp.json'),
+        join(ompAgentDir, '.mcp.json'),
       ]
   for (const settingsPath of globalSettingsPaths) {
     await collectMcpServers(settingsPath, servers, 'global')

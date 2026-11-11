@@ -3,6 +3,7 @@ import { extname, join } from 'path'
 import { existsSync } from 'fs'
 import { RPC_SKILL_PATH_PREFIX, isRpcSkillPath, type InstalledSkill } from '../shared/ipc-contracts'
 import { skillDisplayName } from '../shared/pi-command'
+import { ompAgentDirIn } from './omp-paths'
 
 /**
  * Per-engine skill discovery for the Skills panel.
@@ -33,12 +34,13 @@ interface SkillScanPlan {
   rootMdFiles: boolean
 }
 
-function skillScanPlan(cwd: string, homeDir: string, engine: 'pi' | 'omp'): SkillScanPlan {
+function skillScanPlan(cwd: string, homeDir: string, engine: 'pi' | 'omp', ompProfile: string | undefined): SkillScanPlan {
   if (engine === 'omp') {
     return {
       dirs: [
         { dir: join(cwd, '.omp', 'skills'), source: 'project' },
-        { dir: join(homeDir, '.omp', 'agent', 'skills'), source: 'global' },
+        // The profile's own agent directory; `.claude` and `.agents` are shared.
+        { dir: join(ompAgentDirIn(homeDir, ompProfile), 'skills'), source: 'global' },
         { dir: join(cwd, '.claude', 'skills'), source: 'project' },
         { dir: join(homeDir, '.claude', 'skills'), source: 'global' },
         { dir: agentsSkillsDir(cwd), source: 'project' },
@@ -60,12 +62,17 @@ function skillScanPlan(cwd: string, homeDir: string, engine: 'pi' | 'omp'): Skil
   }
 }
 
+/**
+ * The skills `engine` loads for `cwd`. Under OMP, `ompProfile` (undefined for
+ * the default profile) picks the profile's global skills directory.
+ */
 export async function listSkills(
   cwd: string,
   engine: 'pi' | 'omp',
-  homeDir: string = process.env.HOME ?? process.env.USERPROFILE ?? ''
+  homeDir: string = process.env.HOME ?? process.env.USERPROFILE ?? '',
+  ompProfile?: string
 ): Promise<InstalledSkill[]> {
-  const { dirs, recursive, rootMdFiles } = skillScanPlan(cwd, homeDir, engine)
+  const { dirs, recursive, rootMdFiles } = skillScanPlan(cwd, homeDir, engine, ompProfile)
 
   const skills: InstalledSkill[] = []
   for (const { dir, source } of dirs) {

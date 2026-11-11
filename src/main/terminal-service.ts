@@ -4,6 +4,10 @@ import pty, { type IPty } from 'node-pty'
 import type { TerminalStartOptions, TerminalStartResult } from '../shared/ipc-contracts'
 import { loadPiDotenv } from './pi-dotenv'
 import { childProcessEnv } from './windows-exe-search'
+import { ompProfileArgument } from '../shared/omp-profile'
+
+/** OMP's environment variable selecting the profile. */
+const OMP_PROFILE_ENV = 'OMP_PROFILE'
 
 // Classic VT100 grid, used until the renderer reports the fitted size.
 export const DEFAULT_TERMINAL_COLS = 80
@@ -15,12 +19,39 @@ type TerminalDataHandler = (data: string) => void
 type TerminalExitHandler = (event: { exitCode: number; signal?: number }) => void
 
 /**
+ * The OMP profile a terminal's shell runs `omp` under: pinned to one profile
+ * (undefined is the default profile), or null to leave OMP_PROFILE as the app
+ * inherited it.
+ */
+export type TerminalOmpProfile = { profile: string | undefined } | null
+
+/** A terminal start as main issues it: the renderer's options plus the profile. */
+export interface TerminalLaunchOptions extends TerminalStartOptions {
+  ompProfile?: TerminalOmpProfile
+}
+
+/**
  * The shell's environment: ~/.pi/.env under `inherited`. The shell is the
  * user's own tool, so the app's current-folder search switch stays out of it
  * (see childProcessEnv).
+ *
+ * A pinned OMP profile sets OMP_PROFILE, which OMP reads ahead of its legacy
+ * PI_PROFILE; the default profile is named `default` rather than unset, so a
+ * PI_PROFILE in the environment cannot take over either.
  */
-export function buildTerminalEnv(inherited: NodeJS.ProcessEnv = process.env): Record<string, string> {
-  return childProcessEnv(false, { ...loadPiDotenv(), ...inherited, TERM: TERMINAL_TYPE }) as Record<string, string>
+export function buildTerminalEnv(
+  inherited: NodeJS.ProcessEnv = process.env,
+  ompProfile: TerminalOmpProfile = null
+): Record<string, string> {
+  const env: NodeJS.ProcessEnv = { ...loadPiDotenv(), ...inherited, TERM: TERMINAL_TYPE }
+  if (ompProfile) {
+    // Windows reads variable names case-insensitively; drop every spelling.
+    for (const key of Object.keys(env)) {
+      if (key.toUpperCase() === OMP_PROFILE_ENV) delete env[key]
+    }
+    env[OMP_PROFILE_ENV] = ompProfileArgument(ompProfile.profile)
+  }
+  return childProcessEnv(false, env) as Record<string, string>
 }
 
 export class TerminalService {
@@ -29,7 +60,7 @@ export class TerminalService {
   private cwd = os.homedir()
 
   start(
-    options: TerminalStartOptions,
+    options: TerminalLaunchOptions,
     onData: TerminalDataHandler,
     onExit: TerminalExitHandler
   ): TerminalStartResult {
@@ -47,7 +78,7 @@ export class TerminalService {
       cols: options.cols ?? DEFAULT_TERMINAL_COLS,
       rows: options.rows ?? DEFAULT_TERMINAL_ROWS,
       cwd,
-      env: buildTerminalEnv(),
+      env: buildTerminalEnv(process.env, options.ompProfile ?? null),
       ...(process.platform === 'win32' ? {} : { encoding: 'utf8' }),
     })
     this.terminal = terminal

@@ -2,7 +2,8 @@ import { readdir, realpath, stat } from 'fs/promises'
 import { homedir, tmpdir } from 'os'
 import { join, resolve } from 'path'
 import type { AgentEngineKind } from '../shared/ipc-contracts'
-import { getOmpSessionsRoot, getSessionsRoot } from './pi-paths'
+import { ompSessionsDir } from './omp-paths'
+import { getSessionsRoot } from './pi-paths'
 import { JSONL_EXTENSION, ompSessionDirName, sanitizePath } from './session-paths'
 import { inspectSessionContent } from './session-metadata'
 
@@ -41,13 +42,19 @@ async function resolvedPath(path: string): Promise<string> {
  * The directories where `engine` keeps the sessions of `projectPath`. Pi names
  * the directory after the path itself; OMP names home and temporary-directory
  * projects its own way and may still hold a directory in Pi's naming from
- * before it adopted that scheme.
+ * before it adopted that scheme. For OMP, `ompProfile` picks the profile's
+ * store (undefined is the default profile); Pi has no profiles.
  */
-export async function engineProjectSessionDirs(engine: AgentEngineKind, projectPath: string): Promise<string[]> {
+export async function engineProjectSessionDirs(
+  engine: AgentEngineKind,
+  projectPath: string,
+  ompProfile?: string
+): Promise<string[]> {
   if (engine === 'pi') return [join(getSessionsRoot(), sanitizePath(projectPath))]
   const [project, home, tmp] = await Promise.all([resolvedPath(projectPath), resolvedPath(homedir()), resolvedPath(tmpdir())])
   const names = new Set([ompSessionDirName(project, home, tmp), sanitizePath(projectPath)])
-  return [...names].map((name) => join(getOmpSessionsRoot(), name))
+  const root = ompSessionsDir(ompProfile)
+  return [...names].map((name) => join(root, name))
 }
 
 /**

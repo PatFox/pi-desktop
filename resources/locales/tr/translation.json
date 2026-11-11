@@ -723,6 +723,7 @@
     },
     "workspace": {
       "folderMissing": "Klasör yok: {{path}}",
+      "invalidOmpProfile": "",
       "managedWorktreeCannotChangeFolder": "Yönetilen worktree sekmelerinin klasörü değiştirilemez; sekmeyi kapatıp yenisini oluşturun",
       "noneActive": "Etkin çalışma alanı yok",
       "noSourceForNewTab": "Yeni sekme için kaynak çalışma alanı yok",
@@ -939,6 +940,20 @@
     "failed": "Pi bir hatayla durdu.",
     "needs-approval": "Pi onayınızı bekliyor.",
     "withSession": "{{body}} Biten oturumu açmak için tıklayın."
+  },
+  "ompProfile": {
+    "dialog": {
+      "defaultOption": "",
+      "intro": "",
+      "invalidName": "",
+      "loadFailed": "",
+      "loginHint": "",
+      "newNameLabel": "",
+      "newNamePlaceholder": "",
+      "newOption": "",
+      "profileLabel": "",
+      "title": ""
+    }
   },
   "packages": {
     "catalog": {
@@ -1201,6 +1216,7 @@
       "sessionCount_one": "{{count}} oturum",
       "sessionCount_other": "{{count}} oturum"
     },
+    "ompProfileSession": "",
     "runtime": {
       "completed": "{{agent}} tamamladı",
       "failed": "{{agent}} bir hatayla durdu",
@@ -1402,6 +1418,10 @@
       "description": "Bir turun sonunda {{agent}}, eksik testler veya denetleyemediği işler gibi en fazla üç sonraki adım önerebilir. Bir adıma tıklayınca mesaj kutusuna eklenir. Kaydettikten sonra başlayan oturumlarda geçerli olur.",
       "label": "Sonraki adımları öner"
     },
+    "terminalFollowsOmpProfile": {
+      "description": "",
+      "label": ""
+    },
     "terminalFontSize": {
       "description": "Terminal paneli yazı tipi boyutu",
       "label": "Terminal yazı tipi boyutu"
@@ -1550,11 +1570,13 @@
     "workflowRunsForSession": "Bu oturumun iş akışı çalıştırmaları",
     "workspaceMenu": {
       "changeFolder": "Klasörü değiştir…",
+      "ompProfile": "",
       "rename": "Yeniden adlandır"
     },
     "workspaceSwitcher": {
       "namePlaceholder": "Çalışma alanı adı",
       "noWorkspace": "Çalışma alanı yok",
+      "ompProfileTitle": "",
       "openProjectEllipsis": "Proje aç…",
       "triggerTitle": "Değiştirmek için tıklayın · yeniden adlandırmak için çift tıklayın · seçenekler için sağ tıklayın"
     }
@@ -1775,6 +1797,8 @@
       "newSessionError": "Yeni oturum hatası: {{detail}}",
       "notAFolder": "Proje olarak açılamıyor — klasör değil: {{path}}",
       "notGitRepository": "Bu proje bir Git deposu değil. Başka bir konuşma için Yeni oturum'u kullanın ya da yalıtılmış sekme için bir Git projesi açın.",
+      "ompProfileError": "",
+      "ompProfileForNewSessions": "",
       "openFolderError": "Klasör açma hatası: {{detail}}",
       "removedPackage": "{{spec}} kaldırıldı",
       "removePackageFailed": "Kaldırma başarısız",

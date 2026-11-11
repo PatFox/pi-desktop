@@ -3,6 +3,8 @@ import { applyThemeSettings, rememberBootTheme, setUserThemes, watchSystemTheme 
 import { applyLanguageSetting } from './i18n'
 import { applyUiFont } from './utils/ui-font'
 import { t } from '../../shared/i18n'
+import { agentEngineLabel } from '../../shared/agent-engine-label'
+import { DEFAULT_OMP_PROFILE_NAME } from '../../shared/omp-profile'
 import { buildPlanningPrompt } from './utils/planning-prompt'
 import { composePrompt } from './utils/compose-prompt'
 import { firstQueued, withQueued, withoutQueued, withoutWorkspaceQueue, type SendQueues } from './send-queue'
@@ -652,6 +654,8 @@ interface AppActions {
   activateWorkspace: (workspaceId: string, options?: { awaitingSession?: boolean; skipDirtyConfirm?: boolean }) => Promise<boolean>
   removeWorkspace: (workspaceId: string) => Promise<void>
   renameWorkspace: (workspaceId: string, name: string) => Promise<void>
+  /** Set the OMP profile new sessions in a workspace run under; undefined is the default profile. */
+  setWorkspaceOmpProfile: (workspaceId: string, ompProfile: string | undefined) => Promise<void>
   changeWorkspaceFolder: (workspaceId: string, newPath: string) => Promise<void>
 
   // Timeline
@@ -3301,6 +3305,40 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
     }
   },
 
+  setWorkspaceOmpProfile: async (workspaceId, ompProfile) => {
+    const engine = agentEngineLabel('omp')
+    try {
+      const { runtimesRunning } = await window.piDesktop.workspace.setOmpProfile(workspaceId, ompProfile)
+      await get().loadWorkspaces()
+      // A conversation keeps the account that wrote it, even across a restart,
+      // so only new sessions move. The one exception is the empty chat of a new
+      // session: it has no session file yet, and a restart opens it under the
+      // new profile right away.
+      const isActive = workspaceId === get().activeWorkspace?.id
+      const emptyChat = !get().messages.some((message) => message.role === 'user' || message.role === 'assistant')
+      if (isActive && emptyChat && get().piStatus === 'running') {
+        await get().restartPi()
+      } else if (runtimesRunning) {
+        get().addMessage({
+          id: generateId(),
+          role: 'system',
+          content: t('store.messages.ompProfileForNewSessions', {
+            engine,
+            profile: ompProfile ?? DEFAULT_OMP_PROFILE_NAME,
+          }),
+          timestamp: Date.now(),
+        })
+      }
+    } catch (err) {
+      get().addMessage({
+        id: generateId(),
+        role: 'system',
+        content: t('store.messages.ompProfileError', { engine, detail: err instanceof Error ? err.message : String(err) }),
+        timestamp: Date.now(),
+      })
+    }
+  },
+
   changeWorkspaceFolder: async (workspaceId, newPath) => {
     // Repointing the active workspace restarts its Pi below (the working
     // directory is bound at spawn — without a restart Pi keeps operating in
@@ -3453,12 +3491,12 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
     const errors = validateModelsConfig(edited)
     if (errors.length > 0) return { ok: false, errors }
     // The edits belong to the file the editor shows, so the save names its
-    // engine; main must not pick the engine in use again.
+    // engine and OMP profile; main must not pick the ones in use again.
     const loaded = get().customModelsFile
     if (!loaded) return { ok: false, errors: [t('store.messages.modelsFileNotLoaded')] }
     const original = get().customModels ?? { providers: {} }
     const merged = mergeModelsConfig(original, edited)
-    const result = await window.piDesktop.models.write(merged, loaded.engine)
+    const result = await window.piDesktop.models.write(merged, loaded.engine, loaded.ompProfile)
     if (!result.success) return { ok: false, errors: [result.error ?? t('store.messages.writeFailed')] }
     set({ customModelsEdited: false })
     await get().loadCustomModels()

@@ -3,9 +3,11 @@ import { IPC_CHANNELS } from '../../shared/ipc-contracts'
 import { access } from 'fs/promises'
 import { isString, isObject } from './validation'
 import { validateStartOptions, applyModelDefaults, applyResumePreference, applyPermissionModeToStartOptions } from './pi-start-options'
+import { bindStartToSessionOwner } from '../workspace-manager'
 import { loadAppSettings } from './settings'
 import type { IpcContext } from './context'
 import { detectPiInstallations, getConfiguredEngineKind } from '../pi-rpc-manager'
+import { listOmpProfiles } from '../omp-paths'
 import { t } from '../../shared/i18n'
 
 export function registerPiHandlers(ctx: IpcContext): void {
@@ -76,6 +78,7 @@ export function registerPiHandlers(ctx: IpcContext): void {
     }
 
     pi.stop()
+    bindStartToSessionOwner(startOptions, activeWs)
     return pi.start(startOptions)
   })
 
@@ -93,6 +96,9 @@ export function registerPiHandlers(ctx: IpcContext): void {
   ipcMain.handle(IPC_CHANNELS.PI_DETECT_INSTALLATIONS, async (_event, options?: unknown) => ({
     installations: detectPiInstallations(isObject(options) && options.force === true),
   }))
+
+  // The named OMP profiles on disk, for the workspace profile picker.
+  ipcMain.handle(IPC_CHANNELS.OMP_LIST_PROFILES, async (): Promise<string[]> => listOmpProfiles())
 
   // ─── Pi Commands ────────────────────────────────────────────────────────
 

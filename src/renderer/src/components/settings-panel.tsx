@@ -136,6 +136,9 @@ export function SettingsPanel(): React.JSX.Element {
   const [desktopNotifications, setDesktopNotifications] = useState(draft0.desktopNotifications ?? settings?.desktopNotifications ?? DEFAULT_SETTINGS.desktopNotifications)
   const [suggestNextSteps, setSuggestNextSteps] = useState(draft0.suggestNextSteps ?? settings?.suggestNextSteps ?? DEFAULT_SETTINGS.suggestNextSteps)
   const [resumeLastSession, setResumeLastSession] = useState(draft0.resumeLastSession ?? settings?.resumeLastSession ?? DEFAULT_SETTINGS.resumeLastSession)
+  const [terminalFollowsOmpProfile, setTerminalFollowsOmpProfile] = useState(
+    draft0.terminalFollowsOmpProfile ?? settings?.terminalFollowsOmpProfile ?? DEFAULT_SETTINGS.terminalFollowsOmpProfile
+  )
   const [openToHomeOnLaunch, setOpenToHomeOnLaunch] = useState(draft0.openToHomeOnLaunch ?? settings?.openToHomeOnLaunch ?? DEFAULT_SETTINGS.openToHomeOnLaunch)
   const [runOnStartup, setRunOnStartup] = useState(draft0.runOnStartup ?? settings?.runOnStartup ?? DEFAULT_SETTINGS.runOnStartup)
   const [minimizeToTrayOnClose, setMinimizeToTrayOnClose] = useState(draft0.minimizeToTrayOnClose ?? settings?.minimizeToTrayOnClose ?? DEFAULT_SETTINGS.minimizeToTrayOnClose)
@@ -323,6 +326,7 @@ export function SettingsPanel(): React.JSX.Element {
     setDesktopNotifications(draft.desktopNotifications ?? settings.desktopNotifications)
     setSuggestNextSteps(draft.suggestNextSteps ?? settings.suggestNextSteps)
     setResumeLastSession(draft.resumeLastSession ?? settings.resumeLastSession)
+    setTerminalFollowsOmpProfile(draft.terminalFollowsOmpProfile ?? settings.terminalFollowsOmpProfile)
     setOpenToHomeOnLaunch(draft.openToHomeOnLaunch ?? settings.openToHomeOnLaunch)
     setRunOnStartup(draft.runOnStartup ?? settings.runOnStartup)
     setMinimizeToTrayOnClose(draft.minimizeToTrayOnClose ?? settings.minimizeToTrayOnClose)
@@ -582,6 +586,7 @@ export function SettingsPanel(): React.JSX.Element {
       desktopNotifications,
       suggestNextSteps,
       resumeLastSession,
+      terminalFollowsOmpProfile,
       openToHomeOnLaunch,
       runOnStartup,
       minimizeToTrayOnClose,
@@ -656,6 +661,7 @@ export function SettingsPanel(): React.JSX.Element {
       desktopNotifications: DEFAULT_SETTINGS.desktopNotifications,
       suggestNextSteps: DEFAULT_SETTINGS.suggestNextSteps,
       resumeLastSession: DEFAULT_SETTINGS.resumeLastSession,
+      terminalFollowsOmpProfile: DEFAULT_SETTINGS.terminalFollowsOmpProfile,
       openToHomeOnLaunch: DEFAULT_SETTINGS.openToHomeOnLaunch,
       runOnStartup: DEFAULT_SETTINGS.runOnStartup,
       minimizeToTrayOnClose: DEFAULT_SETTINGS.minimizeToTrayOnClose,
@@ -681,6 +687,7 @@ export function SettingsPanel(): React.JSX.Element {
     setDesktopNotifications(defaults.desktopNotifications!)
     setSuggestNextSteps(defaults.suggestNextSteps!)
     setResumeLastSession(defaults.resumeLastSession!)
+    setTerminalFollowsOmpProfile(defaults.terminalFollowsOmpProfile!)
     setOpenToHomeOnLaunch(defaults.openToHomeOnLaunch!)
     setRunOnStartup(defaults.runOnStartup!)
     setMinimizeToTrayOnClose(defaults.minimizeToTrayOnClose!)
@@ -790,6 +797,16 @@ export function SettingsPanel(): React.JSX.Element {
                 <div className="text-xs text-warning" role="status">{t('settings.agentInstallation.appliesToNewSessions')}</div>
               )}
             </div>
+          </SettingsRow>
+
+          <SettingsRow
+            label={t('settings.terminalFollowsOmpProfile.label', { engine: agentEngineLabel('omp') })}
+            description={t('settings.terminalFollowsOmpProfile.description', { engine: agentEngineLabel('omp') })}
+          >
+            <Toggle
+              checked={terminalFollowsOmpProfile}
+              onChange={(v) => { setTerminalFollowsOmpProfile(v); setSettingsDraft({ terminalFollowsOmpProfile: v }) }}
+            />
           </SettingsRow>
         </SettingsSection>
 

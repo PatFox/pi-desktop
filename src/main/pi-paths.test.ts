@@ -1,5 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { mkdir, mkdtemp, rm, writeFile } from 'fs/promises'
+import { tmpdir } from 'os'
 import { join } from 'path'
 import {
   engineForBoundSession,
@@ -7,7 +9,10 @@ import {
   getSessionsRoot,
   getOmpSessionsRoot,
   getSessionRoots,
+  getSessionStores,
   isWithinSessionRoots,
+  sessionOwnerForBoundSession,
+  sessionOwnerForPath,
 } from './pi-paths'
 
 /**
@@ -131,4 +136,98 @@ test('a start with no session has no owning engine', () => {
     assert.equal(engineForBoundSession({}), null)
     assert.equal(engineForBoundSession({ sessionPath: '/tmp/loose.jsonl' }), null)
   })
+})
+
+/**
+ * Named OMP profiles keep their sessions in their own stores
+ * (`~/.omp/profiles/<name>/agent/sessions`). The index has to read them, and a
+ * resumed session has to reopen under the profile that wrote it, or it runs
+ * with another account's logins.
+ */
+
+async function withProfiles(
+  profiles: readonly string[],
+  run: (home: string) => void
+): Promise<void> {
+  const home = await mkdtemp(join(tmpdir(), 'pi-paths-profiles-'))
+  try {
+    for (const name of profiles) {
+      await mkdir(join(home, '.omp', 'profiles', name, 'agent', 'sessions'), { recursive: true })
+    }
+    withEnv({ HOME: home, PI_CODING_AGENT_DIR: undefined, OMP_CODING_AGENT_DIR: undefined }, () => run(home))
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+}
+
+test('the index reads every named profile store after the default ones', async () => {
+  await withProfiles(['work', 'client-b'], (home) => {
+    const profileRoot = (name: string): string => join(home, '.omp', 'profiles', name, 'agent', 'sessions')
+    assert.deepEqual(getSessionStores(), [
+      { engine: 'pi', root: getSessionsRoot() },
+      { engine: 'omp', root: getOmpSessionsRoot() },
+      { engine: 'omp', ompProfile: 'client-b', root: profileRoot('client-b') },
+      { engine: 'omp', ompProfile: 'work', root: profileRoot('work') },
+    ])
+    assert.deepEqual(getSessionRoots(), getSessionStores().map((store) => store.root))
+  })
+})
+
+test('a profile session is owned by OMP under that profile', async () => {
+  await withProfiles(['work'], (home) => {
+    const workSession = join(home, '.omp', 'profiles', 'work', 'agent', 'sessions', '--p--', 'a.jsonl')
+    assert.deepEqual(sessionOwnerForPath(workSession), { engine: 'omp', ompProfile: 'work' })
+    assert.equal(engineForSessionPath(workSession), 'omp')
+    // The default profile's sessions carry no profile.
+    assert.deepEqual(sessionOwnerForPath(join(getOmpSessionsRoot(), '--p--', 'b.jsonl')), { engine: 'omp' })
+    assert.deepEqual(sessionOwnerForPath(join(getSessionsRoot(), '--p--', 'c.jsonl')), { engine: 'pi' })
+  })
+})
+
+test('a fork source in another profile decides the profile of the start', async () => {
+  await withProfiles(['work'], (home) => {
+    const source = join(home, '.omp', 'profiles', 'work', 'agent', 'sessions', '--p--', 'source.jsonl')
+    assert.deepEqual(
+      sessionOwnerForBoundSession({ sessionPath: join(getOmpSessionsRoot(), '--p--', 'new.jsonl'), forkSessionPath: source }),
+      { engine: 'omp', ompProfile: 'work' }
+    )
+    assert.equal(sessionOwnerForBoundSession({}), null)
+  })
+})
+
+test('profile sessions are authorized, but nothing else under ~/.omp/profiles is', async () => {
+  await withProfiles(['work'], (home) => {
+    const profilesDir = join(home, '.omp', 'profiles')
+    assert.equal(isWithinSessionRoots(join(profilesDir, 'work', 'agent', 'sessions', '--p--', 'a.jsonl')), true)
+    // The profile's logins and config sit beside its sessions and stay refused.
+    assert.equal(isWithinSessionRoots(join(profilesDir, 'work', 'agent', 'agent.db')), false)
+    assert.equal(isWithinSessionRoots(join(profilesDir, 'work', 'agent', 'sessions-old', 'a.jsonl')), false)
+    // A profile that does not exist on disk is not a store.
+    assert.equal(isWithinSessionRoots(join(profilesDir, 'ghost', 'agent', 'sessions', '--p--', 'a.jsonl')), false)
+    // Traversal out of a profile store is refused.
+    assert.equal(
+      isWithinSessionRoots(join(profilesDir, 'work', 'agent', 'sessions', '..', '..', 'agent.db')),
+      false
+    )
+  })
+})
+
+test('a folder OMP would not accept as a profile name is not a store', async () => {
+  await withProfiles(['work', 'Not-A-Profile'], (home) => {
+    const odd = join(home, '.omp', 'profiles', 'Not-A-Profile', 'agent', 'sessions')
+    assert.equal(isWithinSessionRoots(join(odd, '--p--', 'a.jsonl')), false)
+  })
+})
+
+test('a stray file under ~/.omp/profiles is not a store', async () => {
+  const home = await mkdtemp(join(tmpdir(), 'pi-paths-stray-'))
+  try {
+    await mkdir(join(home, '.omp', 'profiles'), { recursive: true })
+    await writeFile(join(home, '.omp', 'profiles', 'work'), '')
+    withEnv({ HOME: home, PI_CODING_AGENT_DIR: undefined, OMP_CODING_AGENT_DIR: undefined }, () => {
+      assert.deepEqual(getSessionStores().map((store) => store.ompProfile), [undefined, undefined])
+    })
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
 })

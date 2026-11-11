@@ -179,3 +179,15 @@ test('parseSkillFrontmatter accepts CRLF endings and a UTF-8 BOM', () => {
     description: 'bom file',
   })
 })
+
+test('listSkills for an OMP profile reads that profile’s global skills, not the default ones', async () => {
+  await withSkillTree(async (home, cwd) => {
+    await writeSkill(join(home, '.omp', 'profiles', 'work', 'agent', 'skills'), 'work-only')
+    const skills = names(await listSkills(cwd, 'omp', home, 'work'))
+    assert.equal(skills.includes('work-only'), true)
+    assert.equal(skills.includes('omp-global'), false, "the default profile's global skills are another account's")
+    // Project, .claude and .agents roots are shared by every profile.
+    assert.equal(skills.includes('proj-omp'), true)
+    assert.equal(skills.includes('shared'), true)
+  })
+})

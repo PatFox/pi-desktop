@@ -4,6 +4,7 @@ import type { AgentEngineKind } from '../../shared/ipc-contracts'
 import { buildPiInvocation, buildPiRunEnv, getPiCli, getPiCliForEngine } from '../pi-rpc-manager'
 import { describePiStartFailure } from '../pi-binary-resolution'
 import { t } from '../../shared/i18n'
+import { ompProfileArgs } from '../../shared/omp-profile'
 
 const execFileAsync = promisify(execFile)
 
@@ -12,11 +13,14 @@ const execFileAsync = promisify(execFile)
 // from the configured default when a session from the other store is open).
 // Electron's child processes don't inherit the user's shell PATH, so bare
 // `execFileAsync('pi', ...)` would fail with ENOENT on most systems.
+// Under OMP the run is pinned to `ompProfile` (undefined is the default
+// profile), so plugin commands act on the profile the active session uses.
 export async function runPiCli(
   args: string[],
   cwd: string,
   timeout: number,
-  engine?: AgentEngineKind
+  engine?: AgentEngineKind,
+  ompProfile?: string
 ): Promise<{ success: boolean; output: string }> {
   try {
     const cli = engine ? getPiCliForEngine(engine) : getPiCli()
@@ -30,9 +34,10 @@ export async function runPiCli(
     // explicitly. Preserve the package panel's existing contract while routing
     // that verb to OMP's native command. Updates differ per plugin kind under
     // OMP, so package-handlers builds those argv lists itself.
-    const cliArgs = cli.kind === 'omp' && args[0] === 'remove'
+    const subcommandArgs = cli.kind === 'omp' && args[0] === 'remove'
       ? ['plugin', 'uninstall', ...args.slice(1)]
       : args
+    const cliArgs = [...ompProfileArgs(cli.kind, ompProfile), ...subcommandArgs]
     // Package specs reach this argv from the renderer, and shell:true means
     // Node quotes nothing — buildPiInvocation escapes the whole invocation for
     // the cmd.exe traversal. A spec cmd.exe cannot carry throws here and is

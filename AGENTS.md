@@ -62,6 +62,7 @@ src/
 │   ├── package-filter.ts         # Tokenized catalog search, shared main+renderer
 │   ├── skill-groups.ts           # Skills panel groups: a display setting keyed by skill name; skill files never move
 │   ├── package-spec.ts           # Validate package specs before the Pi CLI runs
+│   ├── omp-profile.ts            # OMP profile name rule
 │   ├── version-compare.ts        # x.y.z-prerelease ordering (app and package update checks)
 │   ├── path-compare.ts           # Platform-aware path equality (win32 case-fold); main+renderer
 │   ├── folder-drop.ts            # Pure helpers for drag-drop folder -> workspace
@@ -100,6 +101,9 @@ src/
 │   ├── pi-rpc-manager.ts         # Agent subprocess management (pi or omp), startup readiness probe, descendant-tree kill
 │   ├── pi-binary-resolution.ts   # Locate and identify installed pi/omp executables
 │   ├── pi-paths.ts               # Per-engine session-store roots; which engine owns a session file
+│   ├── omp-paths.ts              # OMP's directories for the profile in OMP_PROFILE
+│   ├── instance-mode.ts          # Opt-in multiple instances: setting/env read before the single-instance lock
+│   ├── window-hints.ts           # Optional title label, taskbar identity and frameless window from the environment
 │   ├── pi-dotenv.ts              # Read ~/.pi/.env for agent processes, the terminal, and Diagnostics
 │   ├── agent-resources.ts        # Path of a file shipped in resources/ (an agent extension), dev and packaged
 │   ├── latest-project-session.ts # Per-engine session directories of a project; its latest session
@@ -327,6 +331,7 @@ resources/
 - Session names: Pi appends `session_info` records; OMP rewrites a fixed first-line `{"type":"title"}` slot. `session-name.ts`/`session-metadata.ts` read both (session_info outranks the title slot).
 - Skills are listed per engine (`skills-discovery.ts`): Pi scans `~/.pi/agent/skills`, `~/.agents/skills` and project `.pi/skills`/`.agents/skills` recursively; OMP scans `.omp`, `.claude` and `.agents` roots one level deep. Skills only the other engine can load are never shown. When the engine is running, plugin-shipped skills from its command catalog are merged in (`rpc:`-prefixed pseudo-paths render from the description).
 - `~/.pi/.env` (`pi-dotenv.ts`) adds its variables to every Pi or OMP process, the council's Pi run, commit message suggestions, package CLI runs, and the terminal, and Diagnostics uses it for the provider key check. A variable already in the app's environment wins.
+- OMP profiles: OMP runs under the profile its environment names (`OMP_PROFILE`, else the legacy `PI_PROFILE`; empty or `default` is the default profile), and a named profile moves OMP's whole tree to `~/.omp/profiles/<name>`. Agent processes inherit the app's environment, so every OMP file the app reads follows the same profile: the session store, `models.yml`, `mcp.json`, global skills and the plugin store (`omp-paths.ts`; name rule in `shared/omp-profile.ts`, mirroring OMP's). A name OMP would refuse falls back to the default profile's files and is logged at startup. `OMP_CODING_AGENT_DIR` still relocates only the default profile's session store.
 
 ### Workspace management
 
@@ -487,6 +492,7 @@ Click the status icon in the sidebar header to see:
 - Chat width: Normal (readable middle column) or Full width (messages and composer fill the chat area)
 - Show thinking blocks, auto-scroll
 - Run on startup, Minimize to tray on close (Windows/Linux), Resume last session, desktop notifications
+- Allow multiple instances (`allowMultipleInstances`, default off; read at startup, so a change applies from the next start; see Data storage)
 - Keyboard shortcuts (see Keyboard shortcuts above)
 - Custom theme editor: create, edit, import/export, install from URL, browse the community gallery (theme files live in the GUI data dir `themes/`)
 - Voice dictation: speech model, precision, and device; models download into `<GUI data dir>/speech-models/`
@@ -524,6 +530,10 @@ Renderer → preload (contextBridge) → IPC → main handlers → Pi RPC / File
 
 The GUI data dir is `<appData>/pi-desktop` (on Linux, `~/.config/pi-desktop`). `PI_DESKTOP_USER_DATA_DIR` overrides it. Without the override, startup migrates files still in the legacy `~/.pi-desktop-gui` directory (`migrateLegacyGuiData` in `app-data-paths.ts`).
 
+One Pi Desktop runs at a time by default: a second launch focuses the first window, whatever data dir it was given. With `allowMultipleInstances` on (Settings › Behavior, stored in that data dir's `settings.json`) or `PI_DESKTOP_ALLOW_MULTIPLE_INSTANCES=1`, instances with different data dirs run side by side (for example one per account, started by a launcher); two launches on the same data dir still fold into one. Electron keys the single-instance lock on `userData` when it is requested, so `index.ts` applies the data dir before the lock in that mode and after it otherwise (`instance-mode.ts`). The environment flag also saves the setting into the data dir, so later launches of that dir without the flag take the same lock.
+
+Optional window hints for such a host (`window-hints.ts`): `PI_DESKTOP_WINDOW_TITLE` appends a label to the window title, `PI_DESKTOP_APP_USER_MODEL_ID` gives the instance its own Windows taskbar button and notification identity, and `PI_DESKTOP_FRAMELESS=1` creates the window without the OS frame or a taskbar button, for a host that positions it.
+
 | Path | Purpose |
 |------|---------|
 | `<GUI data dir>/workspaces.json` | Workspace list and active workspace |
@@ -544,6 +554,7 @@ The GUI data dir is `<appData>/pi-desktop` (on Linux, `~/.config/pi-desktop`). `
 | `<workspace>/.pi-desktop/permission-rules.json` | Workspace permission rules |
 | `~/.pi/agent/sessions/` | Pi session files (organized by cwd) |
 | `~/.omp/agent/sessions/` | OMP session files (same layout; OMP writes here regardless of flags) |
+| `~/.omp/profiles/<name>/` | The same OMP tree for the named profile in `OMP_PROFILE` (`agent/sessions/`, `agent/models.yml`, `agent/mcp.json`, `agent/skills/`, `plugins/`) |
 | `~/.pi/agent/settings.json` | Pi global settings (installed `packages[]`) |
 | `.pi/settings.json` | Pi project settings |
 | `~/.pi/agent/models.json` | Pi custom models/providers |
